@@ -14,6 +14,10 @@ type IconButtonProps = {
   className?: string;
 };
 
+export type ApplicationTopBarProps = {
+  onSidebarToggle?: () => void;
+};
+
 function IconButton({ label, children, className }: IconButtonProps) {
   return (
     <button aria-label={label} className={`${styles.iconButton} ${className ?? ''}`} type="button">
@@ -22,13 +26,13 @@ function IconButton({ label, children, className }: IconButtonProps) {
   );
 }
 
-export function ApplicationTopBar() {
+export function ApplicationTopBar({ onSidebarToggle }: ApplicationTopBarProps) {
   return (
     <header aria-label="应用顶部栏" className={styles.topBar}>
       <div className={styles.navigation}>
-        <IconButton label="切换侧边栏">
+        <button aria-label="切换侧边栏" className={styles.iconButton} onClick={onSidebarToggle} type="button">
           <PanelLeft aria-hidden="true" size={18} strokeWidth={1.6} />
-        </IconButton>
+        </button>
         <IconButton label="后退">
           <ArrowLeft aria-hidden="true" size={18} strokeWidth={1.6} />
         </IconButton>

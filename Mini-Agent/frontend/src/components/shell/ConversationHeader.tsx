@@ -7,10 +7,13 @@ import {
   PanelRight,
   SlidersHorizontal,
 } from 'lucide-react';
+import type { RunPresentationStatus } from '../../presentation';
 import styles from './ConversationHeader.module.css';
 
 export type ConversationHeaderProps = {
   title: string;
+  runStatus?: RunPresentationStatus;
+  onOverflowClick?: () => void;
 };
 
 const controls = [
@@ -21,13 +24,13 @@ const controls = [
   { label: '显示右侧面板', icon: <PanelRight aria-hidden="true" size={17} /> },
 ];
 
-export function ConversationHeader({ title }: ConversationHeaderProps) {
+export function ConversationHeader({ title, runStatus = 'completed', onOverflowClick }: ConversationHeaderProps) {
   return (
-    <header aria-label="会话标题栏" className={styles.header}>
+    <header aria-label="会话标题栏" className={styles.header} data-run-status={runStatus}>
       <div className={styles.titleArea}>
         <Folder aria-hidden="true" className={styles.folderIcon} size={19} strokeWidth={1.7} />
         <span className={styles.title} title={title}>{title}</span>
-        <button aria-label="更多会话选项" className={styles.iconButton} type="button">
+        <button aria-label="更多会话选项" className={styles.iconButton} onClick={onOverflowClick} type="button">
           <MoreHorizontal aria-hidden="true" size={19} />
         </button>
       </div>

@@ -1,5 +1,5 @@
 import { ChevronDown, Circle, Mic, Paperclip, Plus, SendHorizontal, ShieldCheck, Square } from 'lucide-react';
-import { useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useEffect, useState, type FormEvent, type KeyboardEvent } from 'react';
 import type { ComposerMode, UiIntentHandler } from '../../presentation';
 import styles from './Composer.module.css';
 
@@ -7,6 +7,7 @@ export type ComposerProps = {
   mode: ComposerMode;
   onIntent: UiIntentHandler;
   placeholder?: string;
+  resetKey?: number;
 };
 
 const disabledMessages = {
@@ -14,11 +15,15 @@ const disabledMessages = {
   disabled_waiting_approval: '当前操作正在等待批准，暂时无法发送新消息。',
 } as const;
 
-export function Composer({ mode, onIntent, placeholder = '输入示例内容' }: ComposerProps) {
+export function Composer({ mode, onIntent, placeholder = '输入示例内容', resetKey }: ComposerProps) {
   const [draft, setDraft] = useState('');
   const isEnabled = mode === 'enabled';
   const trimmedDraft = draft.trim();
   const disabledMessage = isEnabled ? undefined : disabledMessages[mode];
+
+  useEffect(() => {
+    setDraft('');
+  }, [resetKey]);
 
   function submit() {
     if (!isEnabled || !trimmedDraft) return;

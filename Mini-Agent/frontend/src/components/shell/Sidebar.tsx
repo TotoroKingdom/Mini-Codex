@@ -15,10 +15,14 @@ import {
   Settings2,
   Sparkles,
 } from 'lucide-react';
+import type { ConversationFixture } from '../../presentation/types';
 import styles from './Sidebar.module.css';
 
 export type SidebarProps = {
   collapsed?: boolean;
+  conversations?: readonly ConversationFixture[];
+  activeConversationId?: string | null;
+  onConversationSelect?: (conversationId: string) => void;
 };
 
 const primaryActions = [
@@ -31,11 +35,6 @@ const primaryActions = [
 
 const collections = [
   {
-    label: '置顶',
-    icon: <Pin aria-hidden="true" />,
-    items: ['示例会话 A', '当前示例会话', '示例会话 B', '示例会话 C'],
-  },
-  {
     label: '项目',
     icon: <Folder aria-hidden="true" />,
     items: ['项目示例 A', '项目示例 B', '项目示例 C'],
@@ -47,7 +46,16 @@ const collections = [
   },
 ];
 
-export function Sidebar({ collapsed = false }: SidebarProps) {
+const fallbackConversations: readonly ConversationFixture[] = [
+  { id: 'fallback-current', title: '当前示例会话', timeline: [] },
+];
+
+export function Sidebar({
+  collapsed = false,
+  conversations = fallbackConversations,
+  activeConversationId = conversations[0]?.id ?? null,
+  onConversationSelect,
+}: SidebarProps) {
   return (
     <aside
       aria-label="侧边栏"
@@ -78,22 +86,41 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
 
       {!collapsed && (
         <div className={styles.collectionScroll} data-scroll-region="sidebar">
+          <section aria-labelledby="collection-置顶" className={styles.collection}>
+            <h2 id="collection-置顶">置顶</h2>
+            <ul>
+              {conversations.map((conversation, index) => {
+                const isCurrent = conversation.id === activeConversationId;
+                return (
+                  <li key={conversation.id}>
+                    <button
+                      aria-current={isCurrent ? 'page' : undefined}
+                      className={`${styles.conversation} ${isCurrent ? styles.current : ''}`}
+                      onClick={() => onConversationSelect?.(conversation.id)}
+                      type="button"
+                    >
+                      {index === 0 ? <Pin aria-hidden="true" /> : <span className={styles.itemSpacer} aria-hidden="true" />}
+                      <span>{conversation.title}</span>
+                      {isCurrent && <MoreHorizontal aria-hidden="true" className={styles.itemMore} size={16} />}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
           {collections.map(({ label, icon, items }) => (
             <section aria-labelledby={`collection-${label}`} className={styles.collection} key={label}>
               <h2 id={`collection-${label}`}>{label}</h2>
               <ul>
                 {items.map((item, index) => {
-                  const isCurrent = label === '置顶' && index === 1;
                   return (
                     <li key={item}>
                       <button
-                        aria-current={isCurrent ? 'page' : undefined}
-                        className={`${styles.conversation} ${isCurrent ? styles.current : ''}`}
+                        className={styles.conversation}
                         type="button"
                       >
                         {index === 0 && label !== '最近' ? icon : <span className={styles.itemSpacer} aria-hidden="true" />}
                         <span>{item}</span>
-                        {isCurrent && <MoreHorizontal aria-hidden="true" className={styles.itemMore} size={16} />}
                       </button>
                     </li>
                   );

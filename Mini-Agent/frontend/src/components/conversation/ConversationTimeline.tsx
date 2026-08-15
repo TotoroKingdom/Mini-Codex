@@ -10,6 +10,7 @@ import styles from './ConversationTimeline.module.css';
 export type ConversationTimelineProps = {
   items: readonly TimelineItem[];
   reasoningExpanded?: Readonly<Record<string, boolean>>;
+  expandedReasoningIds?: readonly string[];
   onReasoningToggle?: (itemId: string) => void;
   onIntent?: UiIntentHandler;
 };
@@ -17,6 +18,7 @@ export type ConversationTimelineProps = {
 export function ConversationTimeline({
   items,
   reasoningExpanded,
+  expandedReasoningIds,
   onReasoningToggle,
   onIntent,
 }: ConversationTimelineProps) {
@@ -28,7 +30,9 @@ export function ConversationTimeline({
           {item.kind === 'assistant-message' && <AssistantMessage item={item} />}
           {item.kind === 'reasoning' && (
             <Reasoning
-              expanded={reasoningExpanded?.[item.id] ?? item.defaultExpanded}
+              expanded={expandedReasoningIds
+                ? expandedReasoningIds.includes(item.id)
+                : reasoningExpanded?.[item.id] ?? item.defaultExpanded}
               isActive={item.isActive}
               item={item}
               onToggle={() => onReasoningToggle?.(item.id)}
