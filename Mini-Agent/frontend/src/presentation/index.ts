@@ -8,6 +8,8 @@ export {
 export type {
   AssistantMessageTimelineItem,
   ComposerMode,
+  ScenarioId,
+  UiScenario,
   ReasoningTimelineItem,
   RunPresentationStatus,
   StatusNoticeTimelineItem,

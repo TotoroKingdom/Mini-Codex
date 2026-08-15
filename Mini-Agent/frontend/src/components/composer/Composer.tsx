@@ -10,11 +10,11 @@ export type ComposerProps = {
 };
 
 const disabledMessages = {
-  disabled_running: 'Agent 正在运行，暂时无法发送新消息。',
-  disabled_waiting_approval: 'Agent 正在等待批准，暂时无法发送新消息。',
+  disabled_running: '当前运行正在进行，暂时无法发送新消息。',
+  disabled_waiting_approval: '当前操作正在等待批准，暂时无法发送新消息。',
 } as const;
 
-export function Composer({ mode, onIntent, placeholder = '随心输入' }: ComposerProps) {
+export function Composer({ mode, onIntent, placeholder = '输入示例内容' }: ComposerProps) {
   const [draft, setDraft] = useState('');
   const isEnabled = mode === 'enabled';
   const trimmedDraft = draft.trim();
@@ -62,9 +62,9 @@ export function Composer({ mode, onIntent, placeholder = '随心输入' }: Compo
           <button aria-label="选择附件" className={styles.iconButton} disabled={!isEnabled} type="button">
             <Paperclip aria-hidden="true" size={18} strokeWidth={1.7} />
           </button>
-          <button aria-label="访问权限：完全访问" className={styles.accessButton} disabled={!isEnabled} type="button">
+          <button aria-label="访问设置" className={styles.accessButton} disabled={!isEnabled} type="button">
             <ShieldCheck aria-hidden="true" size={17} />
-            <span>完全访问</span>
+            <span>访问设置</span>
           </button>
         </div>
         <div className={styles.rightControls}>
@@ -72,8 +72,8 @@ export function Composer({ mode, onIntent, placeholder = '随心输入' }: Compo
             <Circle aria-hidden="true" size={14} />
             <span>{isEnabled ? '就绪' : '已禁用'}</span>
           </span>
-          <button aria-label="模型选择：5.6 Sol 高" className={styles.modelButton} disabled={!isEnabled} type="button">
-            <span>5.6 Sol 高</span>
+          <button aria-label="模型选择：示例模型" className={styles.modelButton} disabled={!isEnabled} type="button">
+            <span>示例模型</span>
             <ChevronDown aria-hidden="true" size={15} />
           </button>
           <button aria-label="语音输入" className={styles.iconButton} disabled={!isEnabled} type="button">

@@ -10,7 +10,7 @@ describe('Composer', () => {
     expect(screen.getByRole('form', { name: '消息编辑器' })).toHaveClass(styles.composer);
     expect(screen.getByRole('textbox', { name: '输入消息' })).toBeEnabled();
     expect(screen.getByRole('button', { name: '发送消息' })).toBeDisabled();
-    ['添加附件', '选择附件', '访问权限：完全访问', '模型选择：5.6 Sol 高', '语音输入'].forEach((name) => {
+    ['添加附件', '选择附件', '访问设置', '模型选择：示例模型', '语音输入'].forEach((name) => {
       expect(screen.getByRole('button', { name })).toBeInTheDocument();
     });
   });
@@ -46,8 +46,8 @@ describe('Composer', () => {
   });
 
   it.each([
-    ['disabled_running', 'Agent 正在运行，暂时无法发送新消息。'],
-    ['disabled_waiting_approval', 'Agent 正在等待批准，暂时无法发送新消息。'],
+    ['disabled_running', '当前运行正在进行，暂时无法发送新消息。'],
+    ['disabled_waiting_approval', '当前操作正在等待批准，暂时无法发送新消息。'],
   ] as const)('disables input for %s and sends run.stop', async (mode, message) => {
     const user = userEvent.setup();
     const onIntent = vi.fn();

@@ -33,17 +33,17 @@ const collections = [
   {
     label: '置顶',
     icon: <Pin aria-hidden="true" />,
-    items: ['Mini-Agent', '阅读@PROJECT.md@ARCHITECTURE.md@ROADMAP.md', '为什么没有我的允许，你就使用工具？', '查看@docs/ARCHITECTURE.md'],
+    items: ['示例会话 A', '当前示例会话', '示例会话 B', '示例会话 C'],
   },
   {
     label: '项目',
     icon: <Folder aria-hidden="true" />,
-    items: ['spring-ai-hm-ui', 'feishu-agent', 'paiguangguang'],
+    items: ['项目示例 A', '项目示例 B', '项目示例 C'],
   },
   {
     label: '最近',
     icon: <Clock3 aria-hidden="true" />,
-    items: ['帮我安装 Hermes-Agent', '测试一下网络连接，为什么执行很慢', '本次更新更新了啥内容', '每周回顾', 'codex背景图'],
+    items: ['示例记录 A', '示例记录 B', '示例记录 C', '示例记录 D', '示例记录 E'],
   },
 ];
 
@@ -107,7 +107,7 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
       <footer className={styles.footer}>
         <button aria-label="打开用户菜单" className={styles.userButton} type="button">
           <span aria-hidden="true" className={styles.avatar}>T</span>
-          {!collapsed && <span className={styles.userName}>totorokingdom</span>}
+          {!collapsed && <span className={styles.userName}>用户</span>}
         </button>
         {!collapsed && <button aria-label="侧边栏设置" className={styles.iconButton} type="button"><Settings2 aria-hidden="true" /></button>}
       </footer>

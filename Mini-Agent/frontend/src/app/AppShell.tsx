@@ -16,7 +16,7 @@ export type AppShellProps = {
 
 export function AppShell({
   sidebarCollapsed = false,
-  title = '阅读@PROJECT.md@ARCHITECTURE.md@ROADMAP.md',
+  title = '示例会话',
   onIntent,
   onReasoningToggle,
 }: AppShellProps) {
