@@ -385,3 +385,204 @@ npm run dev
 3. 在 1280×720 检查 Timeline/Composer 无重叠，长消息、长 URL、Tool Input/Result 不造成页面级横向溢出，主要操作仍可到达。
 4. 仅用键盘操作 Reasoning、Composer 和审批/停止按钮，确认状态与 Accessible Name 清晰。
 5. 确认全量测试和构建通过，且源码中没有 Scenario Harness、Backend、网络、持久化、Router 或异步 Agent Runtime；记录 P02 Gate 后停止。
+
+---
+
+# M01-P03 — Fixture, Interaction & Acceptance TASK
+
+## 执行边界
+
+- 仅在 `M01-P02` Gate 通过后执行；复用 P01 Shell 和 P02 展示组件，不重写既有视觉边界。
+- 只实现确定性 Fixture、本地 UI 状态、Acceptance Panel、交互接线、回归验证和最终 M01 Acceptance（里程碑验收）。
+- 所有状态变化均为本地同步展示；不使用网络、持久化、Router、计时器驱动流程或真实/异步 Agent Runtime。
+- UiIntent 只更新 Intent Monitor；Timeline、Scenario、Run Status 和 Tool 状态保持 Fixture 原值。
+- 每个 TASK 完成后运行其必要测试，并仅对 `write_scope` 内新增源码/测试文件执行 `git add`；`dist/`、`node_modules/` 等构建或依赖目录不进入暂存区。
+- 前四个 TASK 只做 TASK 级验证；最后一个 TASK 执行 P03 Gate 和唯一一次 M01 Feature Acceptance。
+
+---
+
+## M01-P03-T01 — 建立六个确定性 Fixture Scenario
+
+- **task_id:** `M01-P03-T01`
+- **goal:** 实现 SPEC 规定的 Scenario 类型、固定数据和可自动检查的不变量。
+- **depends_on:** `[M01-P02-T05]`
+- **wave:** `1`
+- **status:** `pending`
+
+**write_scope:**
+
+- `frontend/src/presentation/types.ts`（补充 `ScenarioId`、`ConversationFixture`、`UiScenario`）
+- `frontend/src/fixtures/scenarios.ts`
+- `frontend/src/fixtures/index.ts`
+- `frontend/src/fixtures/scenarios.test.ts`
+
+**expected_output:**
+
+- 提供且仅提供 `empty`、`completed`、`running`、`waiting-approval`、`failed`、`cancelled` 六个唯一 Scenario；默认 ID 导出为 `completed`。
+- `UiScenario` 准确包含 `id`、`name`、`description`、`runStatus`、`conversations`、`activeConversationId`、`composerMode`。
+- 各 Scenario 内容、Run Status 和 Composer Mode 符合 SPEC；`completed` 至少两个会话并完整包含 User → Reasoning → Tool Call → Tool Result → Assistant。
+- 使用固定 ID、固定时间文案和固定简体中文内容；不读取当前时间、不使用随机数、网络或计时器。
+- 测试验证 ID 完整且唯一、Active Conversation 引用有效、Tool Result 只引用此前出现的 Tool Call、Run/Composer 配对正确以及各场景必需内容存在。
+
+**verification:**
+
+```powershell
+cd frontend
+npm run test -- --run src/fixtures/scenarios.test.ts
+npm run build
+git add -- src/presentation/types.ts src/fixtures/scenarios.ts src/fixtures/index.ts src/fixtures/scenarios.test.ts
+```
+
+---
+
+## M01-P03-T02 — 实现 Acceptance Panel
+
+- **task_id:** `M01-P03-T02`
+- **goal:** 实现可由 Header Overflow 承载的受控验收面板组件。
+- **depends_on:** `[M01-P03-T01]`
+- **wave:** `2`
+- **status:** `pending`
+
+**write_scope:**
+
+- `frontend/src/components/acceptance/AcceptancePanel.tsx`
+- `frontend/src/components/acceptance/AcceptancePanel.module.css`
+- `frontend/src/components/acceptance/ScenarioSwitcher.tsx`
+- `frontend/src/components/acceptance/IntentMonitor.tsx`
+- `frontend/src/components/acceptance/AcceptancePanel.test.tsx`
+
+**expected_output:**
+
+- Panel 显示 Scenario Switcher、当前场景名称/说明、Intent Monitor 和关闭按钮；所有状态与事件通过 props/callback 输入输出。
+- Scenario Switcher 可用键盘操作，选择后上报准确 `ScenarioId`；不直接修改 Fixture 或应用状态。
+- Intent Monitor 使用 `aria-live` 展示最近一次 UiIntent 的类型和 payload；无 Intent 时有明确空态。
+- Panel 关闭时不占据主布局空间；打开时不改变 App Shell、Timeline 或 Composer 的尺寸基线。
+- 测试覆盖六个选项、场景选择 callback、Intent 四类显示、`aria-live`、关闭 callback 和主要 Accessible Name。
+
+**verification:**
+
+```powershell
+cd frontend
+npm run test -- --run src/components/acceptance/AcceptancePanel.test.tsx
+git add -- src/components/acceptance/AcceptancePanel.tsx src/components/acceptance/AcceptancePanel.module.css src/components/acceptance/ScenarioSwitcher.tsx src/components/acceptance/IntentMonitor.tsx src/components/acceptance/AcceptancePanel.test.tsx
+```
+
+---
+
+## M01-P03-T03 — 实现确定性 UI Harness State
+
+- **task_id:** `M01-P03-T03`
+- **goal:** 用纯本地状态模型统一管理场景、会话、Sidebar、Reasoning、Composer 重置和最近 Intent。
+- **depends_on:** `[M01-P03-T01]`
+- **wave:** `2`
+- **status:** `pending`
+
+**write_scope:**
+
+- `frontend/src/app/uiHarness.ts`
+- `frontend/src/app/uiHarness.test.ts`
+
+**expected_output:**
+
+- 初始状态固定为 `completed`、其默认活动会话、Sidebar 展开、Fixture 默认 Reasoning 展开状态、空 Intent，Acceptance Panel 默认关闭。
+- 支持 Scenario 选择、Conversation 选择、Sidebar 折叠、Reasoning 独立切换、Panel 开关和 UiIntent 记录。
+- Scenario 切换后恢复目标 Fixture 的默认会话、Sidebar、Reasoning、Composer 草稿和 Intent；提供显式且可测试的 Composer reset key（重置键）或等价机制。
+- Conversation 切换不改变 Sidebar 折叠状态；Sidebar 切换不改变当前会话；无效会话/Reasoning ID 不破坏状态。
+- 记录 UiIntent 时仅替换最近 Intent，不修改 Scenario、Run Status、Composer Mode、Timeline 数量或 Tool 状态；Fixture 对象保持不可变。
+- Reducer/状态测试覆盖所有 action、默认状态、完整重置、不变量和连续切换。
+
+**verification:**
+
+```powershell
+cd frontend
+npm run test -- --run src/app/uiHarness.test.ts
+git add -- src/app/uiHarness.ts src/app/uiHarness.test.ts
+```
+
+---
+
+## M01-P03-T04 — 接入全部本地交互与 UiIntent Harness
+
+- **task_id:** `M01-P03-T04`
+- **goal:** 将 Fixture、Acceptance Panel 和 Harness State 接入现有 Shell、Timeline 与 Composer。
+- **depends_on:** `[M01-P03-T02, M01-P03-T03]`
+- **wave:** `3`
+- **status:** `pending`
+
+**write_scope:**
+
+- `frontend/src/App.tsx`
+- `frontend/src/app/AppShell.tsx`
+- `frontend/src/components/shell/ApplicationTopBar.tsx`
+- `frontend/src/components/shell/Sidebar.tsx`
+- `frontend/src/components/shell/ConversationHeader.tsx`
+- `frontend/src/components/conversation/ConversationTimeline.tsx`
+- `frontend/src/components/conversation/EmptyConversation.tsx`
+- `frontend/src/components/conversation/EmptyConversation.module.css`
+- `frontend/src/components/composer/Composer.tsx`（仅补充受控重置接口）
+- `frontend/src/app/AppHarness.test.tsx`
+
+**expected_output:**
+
+- 应用默认显示 `completed`，Acceptance Panel 关闭；Header Overflow 打开 Panel，关闭后参考图主布局保持不变。
+- 切换六个 Scenario 后 Header、Sidebar、Timeline、Run 状态和 Composer Mode 同步，`empty` 显示可用空态。
+- Conversation Switch 同步更新 Sidebar 选中项、Header 标题和 Timeline；Top Bar Toggle 在 280px/64px 间切换 Sidebar。
+- Reasoning 可独立展开/收起；Composer 输入、Enter、Shift+Enter、提交/清空以及 Running/Waiting Approval 的 Stop 行为保持 P02 契约。
+- Submit、Stop、Approve、Deny 的准确 UiIntent 显示在 Intent Monitor；触发前后的 Scenario、Run Status、Timeline 数量和 Fixture 数据不变。
+- Scenario 切换完整重置会话、Sidebar、Reasoning、Composer 和 Intent；所有真实交互可用键盘完成。
+- `user-event` 集成测试覆盖上述交互、重置、四类 Intent payload、无 Runtime 副作用和主要 Accessible Name。
+
+**verification:**
+
+```powershell
+cd frontend
+npm run test -- --run src/app/AppHarness.test.tsx
+npm run build
+git add -- src/App.tsx src/app/AppShell.tsx src/components/shell/ApplicationTopBar.tsx src/components/shell/Sidebar.tsx src/components/shell/ConversationHeader.tsx src/components/conversation/ConversationTimeline.tsx src/components/conversation/EmptyConversation.tsx src/components/conversation/EmptyConversation.module.css src/components/composer/Composer.tsx src/app/AppHarness.test.tsx
+```
+
+---
+
+## M01-P03-T05 — 完成 Regression 与 M01 Feature Acceptance
+
+- **task_id:** `M01-P03-T05`
+- **goal:** 补齐跨组件回归证据，完成两档视口检查和 M01 唯一一次正式验收。
+- **depends_on:** `[M01-P03-T04]`
+- **wave:** `4`
+- **status:** `pending`
+
+**write_scope:**
+
+- `frontend/src/test/m01Regression.test.tsx`
+- `frontend/src/test/sourceBoundary.test.ts`
+- `frontend/src/app/AppShell.module.css`（仅修复验收发现的布局/溢出问题）
+- `frontend/src/components/**/*.module.css`（仅修复验收发现的视觉、焦点或 Reduced Motion 问题）
+- P03 T01–T04 创建或修改的文件（仅修复失败验证，并在完成报告中说明原因）
+
+**expected_output:**
+
+- Regression Test（回归测试）引用全部 Shell 区域、六类 Timeline Kind、三种 Composer Mode、六个 Scenario 和四类 UiIntent；关键测试不存在 skip/todo。
+- Source Boundary Test（源码边界测试）确认依赖和源码没有 Backend Client、网络、持久化、Router、异步 Mock Agent、计时器状态转换、全局状态库或禁止的 UI 技术。
+- 默认 `completed` 且 Panel 关闭；六场景切换、状态重置、Conversation/Sidebar/Reasoning/Composer 交互和 UiIntent 不变量全部通过。
+- 语义、键盘、Accessible Name、长内容、overflow、Focus、状态非纯颜色表达和 `prefers-reduced-motion` 均有自动或人工证据。
+- `M01-R01` 至 `M01-R12` 均有证据；P01、P02、P03 最新测试与生产构建返回退出码 0。
+
+**verification:**
+
+```powershell
+cd frontend
+npm run test -- --run
+npm run build
+git add -- src/test/m01Regression.test.tsx src/test/sourceBoundary.test.ts
+npm run dev
+```
+
+人工验收：
+
+1. 在 1440×900 使用默认 `completed` 且关闭 Panel，对照两张参考图逐区检查全部可见区域和控件。
+2. 按 Layout → Spacing → Typography → Icon → Border/Radius → Interaction State → Content Density 评审；验收前清零前三类阻断项。
+3. 打开 Panel，逐一检查六个 Scenario，以及 Hover、Focus、Selected、Expanded、Disabled、Running、Waiting Approval、Failed、Cancelled。
+4. 在 1280×720 检查 Sidebar 两态、Header/Timeline/Composer 无重叠、长内容裁切/滚动和主要操作可达。
+5. 仅用键盘完成场景、会话、Reasoning、Composer 和当前场景操作；确认所有主要 Icon Button 具有 Accessible Name。
+6. 检查 `git status --short`，确认新增源码/测试文件已跟踪，构建产物和依赖目录未暂存。
+7. 自动与人工证据全部通过后记录 M01 Feature Acceptance；停止，不生成或实现 M02。

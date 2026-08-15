@@ -44,6 +44,17 @@ export const COMPOSER_MODES = [
 
 export type ComposerMode = (typeof COMPOSER_MODES)[number];
 
+export const SCENARIO_IDS = [
+  'empty',
+  'completed',
+  'running',
+  'waiting-approval',
+  'failed',
+  'cancelled',
+] as const;
+
+export type ScenarioId = (typeof SCENARIO_IDS)[number];
+
 type TimelineItemBase<TKind extends TimelineItemKind> = {
   id: string;
   kind: TKind;
@@ -101,3 +112,19 @@ export type TimelineItem =
   | ToolCallTimelineItem
   | ToolResultTimelineItem
   | StatusNoticeTimelineItem;
+
+export type ConversationFixture = {
+  id: string;
+  title: string;
+  timeline: readonly TimelineItem[];
+};
+
+export type UiScenario = {
+  id: ScenarioId;
+  name: string;
+  description: string;
+  runStatus: RunPresentationStatus;
+  conversations: readonly ConversationFixture[];
+  activeConversationId: string | null;
+  composerMode: ComposerMode;
+};
