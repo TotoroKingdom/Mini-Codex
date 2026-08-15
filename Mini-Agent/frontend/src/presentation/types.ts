@@ -113,9 +113,12 @@ export type TimelineItem =
   | ToolResultTimelineItem
   | StatusNoticeTimelineItem;
 
+export type ConversationCollection = 'pinned' | 'project' | 'recent';
+
 export type ConversationFixture = {
   id: string;
   title: string;
+  collection?: ConversationCollection;
   timeline: readonly TimelineItem[];
 };
 

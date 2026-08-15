@@ -43,12 +43,19 @@
 
 .collectionScroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 var(--space-2) var(--space-5); scrollbar-color: var(--border-strong) transparent; }
 .collection { margin-bottom: var(--space-5); }
-.collection h2 { margin: 0 0 var(--space-2); padding: 0 var(--space-2); color: var(--text-tertiary); font-size: var(--font-size-xs); font-weight: var(--font-weight-semibold); }
+.collectionHeader { display: flex; align-items: center; min-height: 24px; margin: 0 0 var(--space-2); padding: 0 var(--space-2); }
+.collection h2 { margin: 0; color: var(--text-tertiary); font-size: var(--font-size-xs); font-weight: var(--font-weight-semibold); }
+.collectionActions { display: flex; gap: 2px; margin-left: auto; opacity: 0; transition: opacity var(--motion-fast) ease; }
+.collectionHeader:hover .collectionActions, .collectionHeader:focus-within .collectionActions { opacity: 1; }
+.collectionAction, .conversationMore { display: inline-grid; width: 24px; height: 24px; padding: 0; place-items: center; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--icon-secondary); }
+.collectionAction:hover, .conversationMore:hover { background: var(--surface-hover); color: var(--icon-primary); }
 .collection ul { display: grid; gap: 2px; padding: 0; margin: 0; list-style: none; }
+.conversationItem { display: flex; align-items: center; min-width: 0; border-radius: var(--radius-md); }
 .conversation { display: flex; align-items: center; gap: var(--space-2); width: 100%; height: 38px; min-width: 0; padding: 0 var(--space-2); border-radius: var(--radius-md); color: var(--text-secondary); text-align: left; }
 .conversation > span:nth-child(2), .conversation > span:first-child:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .itemSpacer { width: 18px; flex: 0 0 18px; }
-.itemMore { flex: 0 0 auto; margin-left: auto; }
+.conversationMore { flex: 0 0 24px; margin-left: -30px; margin-right: var(--space-1); opacity: 0; transition: opacity var(--motion-fast) ease; }
+.conversationItem:hover .conversationMore, .conversationItem:focus-within .conversationMore { opacity: 1; }
 .current { background: var(--surface-selected); color: var(--text-primary); }
 
 .footer { display: flex; align-items: center; gap: var(--space-2); min-height: 56px; padding: var(--space-2) var(--space-3); border-top: 1px solid var(--border-subtle); }

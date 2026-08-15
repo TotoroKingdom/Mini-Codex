@@ -69,6 +69,19 @@ describe('App Harness', () => {
     expect(within(header()).getByText('示例会话 B')).toBeInTheDocument();
   });
 
+  it('switches Project and Recent sidebar conversations into the main view', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole('button', { name: '项目示例 A' }));
+    expect(within(header()).getByText('项目示例 A')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '项目示例 A' })).toHaveAttribute('aria-current', 'page');
+
+    await user.click(screen.getByRole('button', { name: '示例记录 A' }));
+    expect(within(header()).getByText('示例记录 A')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '示例记录 A' })).toHaveAttribute('aria-current', 'page');
+  });
+
   it('supports keyboard Reasoning toggle and resets Composer, Conversation, Sidebar, Reasoning, and Intent on Scenario selection', async () => {
     const user = userEvent.setup();
     render(<App />);
