@@ -7,7 +7,7 @@
 Roadmap 只定义：
 
 - Milestone 目标和依赖。
-- 候选 Feature。
+- Milestone/Feature 内计划交付的能力边界。
 - 累计可交付结果。
 - 自动验证和人工验收方式。
 
@@ -18,7 +18,7 @@ Roadmap 不提前生成未来 Feature 的 SPEC、PLAN 或 TASK。任何时刻只
 ```text
 PROJECT
   → ARCHITECTURE
-  → ROADMAP Milestone
+  → ROADMAP Milestone / Feature
   → Current Feature SPEC
   → Sequential PLANs
   → TASK Waves inside current PLAN
@@ -33,8 +33,7 @@ PROJECT
 | Task | 一个边界明确、可以独立验证的代码或文档变化 |
 | Wave | 当前 Plan 中所有无未满足依赖的 Task 已并行完成并集成 |
 | Plan | 一个完整集成、测试通过、应用仍可启动的实现增量 |
-| Feature | SPEC 中的行为和验收场景全部通过，并完成人工验收 |
-| Milestone | 所有候选 Feature 完成，形成可运行、可演示的累计产品能力 |
+| Feature / Milestone | 二者一一对应；SPEC 行为与验收场景全部通过并完成人工验收 |
 
 ## 3. Milestone Overview（里程碑总览）
 
@@ -63,13 +62,13 @@ PROJECT
 
 建立高完成度的 Codex-like UI，并使用固定 Fixture 提前验证所有重要执行状态的呈现方式。
 
-**Candidate Features**
+**Planned Capabilities**
 
 - React/Vite/TypeScript 应用骨架和 Design Tokens。
 - Sidebar、Header、Conversation View 和 Composer。
 - User、Assistant、Reasoning、ToolCall、ToolResult 消息组件。
 - Running、Waiting Approval、Failed、Cancelled 等 Fixture 状态。
-- 响应式布局、空状态和基础可访问性。
+- 桌面布局（最低 1280px）、空状态和基础可访问性。
 
 **Deliverable**
 
@@ -78,7 +77,7 @@ PROJECT
 **Verification**
 
 - Vitest 与 React Testing Library 覆盖核心组件状态。
-- 人工切换全部 Fixture，检查布局、滚动、输入和状态渲染。
+- 人工在 1440×900 与 1280×720 切换全部 Fixture，检查布局、滚动、输入和状态渲染。
 
 ### M02 — Backend Foundation
 
@@ -88,7 +87,7 @@ PROJECT
 
 建立可启动的 FastAPI、配置、SQLite Repository 和 Migration 基础。
 
-**Candidate Features**
+**Planned Capabilities**
 
 - FastAPI 应用生命周期和健康检查。
 - Pydantic 配置与环境变量加载。
@@ -113,7 +112,7 @@ UI 可以连接真实 Python 服务；空数据库会自动初始化，重复启
 
 引入 Local Workspace 领域实体和本地项目目录边界。
 
-**Candidate Features**
+**Planned Capabilities**
 
 - Workspace Entity、Repository 和 REST API。
 - Windows 路径规范化、存在性和目录检查。
@@ -137,7 +136,7 @@ UI 可以连接真实 Python 服务；空数据库会自动初始化，重复启
 
 实现 `Workspace 1:N Conversation 1:N Session` 的持久化和用户交互。
 
-**Candidate Features**
+**Planned Capabilities**
 
 - Conversation CRUD、标题和时间排序。
 - Message 基础数据模型。
@@ -163,7 +162,7 @@ UI 可以连接真实 Python 服务；空数据库会自动初始化，重复启
 
 建立统一 Run 状态机、全局活动 Run 锁和 REST + SSE Event 管道。
 
-**Candidate Features**
+**Planned Capabilities**
 
 - Run Entity、状态转换和全局单 Run Guard。
 - Event Envelope、sequence、内存 Buffer 和 Event Store。
@@ -189,13 +188,13 @@ UI 可以连接真实 Python 服务；空数据库会自动初始化，重复启
 
 用真实 DeepSeekProvider 替换 Mock Agent，同时保持 Core 与 Provider SDK 解耦。
 
-**Candidate Features**
+**Planned Capabilities**
 
 - `LLMProvider` Port 和统一流式响应类型。
 - `DeepSeekProvider` 配置、错误映射和取消。
 - Text 与 reasoning delta 转换。
 - 完整 Assistant Message/reasoning 持久化。
-- 多轮 Conversation History 请求。
+- 接收由 Context Assembly 提供的模型输入；不在 Provider 内选择或截断 Conversation History。
 
 **Deliverable**
 
@@ -215,13 +214,15 @@ UI 可以连接真实 Python 服务；空数据库会自动初始化，重复启
 
 把模型输入集中到可测试的 Context Assembly，而不是在 Provider 或 API 中拼接 Prompt。
 
-**Candidate Features**
+**Planned Capabilities**
 
 - 内置 System Prompt。
 - Workspace、Session 和 Run Runtime Context。
 - Conversation History 选择和顺序。
 - Tool Definition 注入接口。
 - 上下文预算、截断和可观察摘要。
+
+Conversation History 的选择、顺序、预算和截断只由本 Milestone 负责，M06 不重复实现这些策略。
 
 **Deliverable**
 
@@ -240,7 +241,7 @@ UI 可以连接真实 Python 服务；空数据库会自动初始化，重复启
 
 把单次 Chat Completion 演进为可终止、可取消的 Agent Loop。
 
-**Candidate Features**
+**Planned Capabilities**
 
 - Tool Definition、Tool Request 和 Tool Result 领域类型。
 - Tool Registry 视图与 `ToolInvoker` Port。
@@ -265,7 +266,7 @@ Agent 可以自主请求演示工具，消费 Tool Result，并继续生成最�
 
 让 Agent 在严格 Workspace 边界内自主读取和搜索项目内容。
 
-**Candidate Features**
+**Planned Capabilities**
 
 - Tool Schema Validation 和 Input Normalization。
 - Windows Path Safety 与 Workspace Boundary。
@@ -290,7 +291,7 @@ Agent 可以列出、读取、搜索当前 Workspace，并根据真实项目内�
 
 实现可审查的文件修改和单 ToolCall 人工审批闭环。
 
-**Candidate Features**
+**Planned Capabilities**
 
 - 结构化 Apply Patch Parser 和 Executor。
 - ToolCall 与 PermissionDecision 持久化。
@@ -315,7 +316,7 @@ Agent 可以提出 Workspace 内的 Patch；只有用户批准后才修改文件
 
 在每次调用人工审批和 Runtime 控制下，以 Workspace Root 为工作目录执行 PowerShell 命令。
 
-**Candidate Features**
+**Planned Capabilities**
 
 - Shell Tool Schema 和 Command Safety。
 - 单 ToolCall ASK 审批。
@@ -341,7 +342,7 @@ Agent 可以提出测试或构建命令，经批准后在 Workspace Root 执行�
 
 实现 Workspace 级、显式、可审计的长期记忆。
 
-**Candidate Features**
+**Planned Capabilities**
 
 - Memory Entity 和 Repository。
 - `memory_save`、`memory_search`、`memory_delete`。
@@ -366,7 +367,9 @@ Agent 可以显式保存项目记忆，并在同一 Workspace 的另一个 Conve
 
 处理刷新、断线、Provider 失败、工具失败和后端重启后的状态一致性。
 
-**Candidate Features**
+本 Milestone 负责跨模块故障注入和综合恢复；各实体、状态机和持久化能力在首次引入时就必须满足自身正确性，不把基础正确性推迟到 M13。
+
+**Planned Capabilities**
 
 - SSE 重连、事件去重和最终状态恢复。
 - 启动时 ACTIVE Session → STALE 修复。
@@ -391,7 +394,7 @@ Agent 可以显式保存项目记忆，并在同一 Workspace 的另一个 Conve
 
 完成端到端验证、启动体验、文档和架构一致性检查。
 
-**Candidate Features**
+**Planned Capabilities**
 
 - 一致的前后端开发与启动流程。
 - 完整 Playwright 用户旅程。
@@ -413,10 +416,10 @@ Agent 可以显式保存项目记忆，并在同一 Workspace 的另一个 Conve
 
 ### 5.1 Progressive Elaboration
 
-- Roadmap 可以列出候选 Feature 名称，但不提前生成未来 Feature 文档。
-- 只为当前 Milestone 的当前 Feature 生成 SPEC。
+- Roadmap 可以列出每个 Milestone/Feature 的能力边界，但不提前生成未来 SPEC、PLAN 或 TASK。
+- 只为当前 Milestone/Feature 生成 SPEC。
 - 当前 Feature 未经人工验收，不生成下一个 Feature。
-- 一个 Milestone 可以包含多个 Feature，按顺序完成。
+- 一个 Feature 与一个 Milestone 一一对应；Feature 内部通过多个顺序 Plan 和 Task 逐步完成。
 
 ### 5.2 SPEC → PLAN → TASK
 
@@ -466,16 +469,12 @@ status
 - 自动测试保持通过。
 - 实现仍符合 SPEC 和 Architecture。
 
-每个 Feature：
+每个 Feature/Milestone：
 
 - SPEC 验收项全部有证据。
 - 完成人工验收。
 - 更新 Feature 与 Roadmap 状态。
-- 验收通过后才能生成下一个 Feature。
-
-每个 Milestone：
-
-- 所有 Feature 已完成人工验收。
+- 验收通过后才能生成下一个 Feature/Milestone。
 - 累计 Deliverable 可以独立演示。
 - 自动测试、人工演示和架构一致性检查通过。
 
