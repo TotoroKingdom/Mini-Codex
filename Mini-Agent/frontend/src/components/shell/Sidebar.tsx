@@ -13,6 +13,7 @@ import {
   Plus,
   Search,
   Settings2,
+  SquarePen,
   Sparkles,
 } from 'lucide-react';
 import type { ConversationFixture } from '../../presentation/types';
@@ -35,16 +36,21 @@ const primaryActions = [
 
 const collections = [
   {
+    label: '置顶',
+    collection: 'pinned',
+    icon: <Pin aria-hidden="true" />,
+  },
+  {
     label: '项目',
+    collection: 'project',
     icon: <Folder aria-hidden="true" />,
-    items: ['项目示例 A', '项目示例 B', '项目示例 C'],
   },
   {
     label: '最近',
+    collection: 'recent',
     icon: <Clock3 aria-hidden="true" />,
-    items: ['示例记录 A', '示例记录 B', '示例记录 C', '示例记录 D', '示例记录 E'],
   },
-];
+] as const;
 
 const fallbackConversations: readonly ConversationFixture[] = [
   { id: 'fallback-current', title: '当前示例会话', timeline: [] },
@@ -86,48 +92,51 @@ export function Sidebar({
 
       {!collapsed && (
         <div className={styles.collectionScroll} data-scroll-region="sidebar">
-          <section aria-labelledby="collection-置顶" className={styles.collection}>
-            <h2 id="collection-置顶">置顶</h2>
-            <ul>
-              {conversations.map((conversation, index) => {
-                const isCurrent = conversation.id === activeConversationId;
-                return (
-                  <li key={conversation.id}>
-                    <button
-                      aria-current={isCurrent ? 'page' : undefined}
-                      className={`${styles.conversation} ${isCurrent ? styles.current : ''}`}
-                      onClick={() => onConversationSelect?.(conversation.id)}
-                      type="button"
-                    >
-                      {index === 0 ? <Pin aria-hidden="true" /> : <span className={styles.itemSpacer} aria-hidden="true" />}
-                      <span>{conversation.title}</span>
-                      {isCurrent && <MoreHorizontal aria-hidden="true" className={styles.itemMore} size={16} />}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </section>
-          {collections.map(({ label, icon, items }) => (
+          {collections.map(({ label, collection, icon }) => {
+            const collectionConversations = conversations.filter(
+              (conversation) => (conversation.collection ?? 'pinned') === collection,
+            );
+            const hasHeaderActions = collection !== 'pinned';
+
+            return (
             <section aria-labelledby={`collection-${label}`} className={styles.collection} key={label}>
-              <h2 id={`collection-${label}`}>{label}</h2>
+              <div className={styles.collectionHeader}>
+                <h2 id={`collection-${label}`}>{label}</h2>
+                {hasHeaderActions && (
+                  <div className={styles.collectionActions}>
+                    <button aria-label={`${label}更多操作`} className={styles.collectionAction} type="button">
+                      <MoreHorizontal aria-hidden="true" size={16} />
+                    </button>
+                    <button aria-label={label === '项目' ? '新建项目' : '编辑最近分组'} className={styles.collectionAction} type="button">
+                      {label === '项目' ? <Plus aria-hidden="true" size={16} /> : <SquarePen aria-hidden="true" size={15} />}
+                    </button>
+                  </div>
+                )}
+              </div>
               <ul>
-                {items.map((item, index) => {
+                {collectionConversations.map((conversation, index) => {
+                  const isCurrent = conversation.id === activeConversationId;
                   return (
-                    <li key={item}>
+                    <li className={styles.conversationItem} key={conversation.id}>
                       <button
-                        className={styles.conversation}
+                        aria-current={isCurrent ? 'page' : undefined}
+                        className={`${styles.conversation} ${isCurrent ? styles.current : ''}`}
+                        onClick={() => onConversationSelect?.(conversation.id)}
                         type="button"
                       >
-                        {index === 0 && label !== '最近' ? icon : <span className={styles.itemSpacer} aria-hidden="true" />}
-                        <span>{item}</span>
+                        {index === 0 && collection !== 'recent' ? icon : <span className={styles.itemSpacer} aria-hidden="true" />}
+                        <span>{conversation.title}</span>
+                      </button>
+                      <button aria-label={`打开${conversation.title}操作菜单`} className={styles.conversationMore} type="button">
+                        <MoreHorizontal aria-hidden="true" size={16} />
                       </button>
                     </li>
                   );
                 })}
               </ul>
             </section>
-          ))}
+            );
+          })}
         </div>
       )}
 

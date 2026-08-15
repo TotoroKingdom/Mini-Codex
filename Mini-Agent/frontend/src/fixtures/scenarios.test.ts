@@ -56,7 +56,9 @@ describe('deterministic UI scenarios', () => {
   it('contains all mandatory Scenario content using fixed Chinese data', () => {
     const completed = scenarios.completed;
     const completedActive = activeConversation(completed)!;
-    expect(completed.conversations).toHaveLength(2);
+    expect(completed.conversations.filter((conversation) => conversation.collection === 'pinned')).toHaveLength(2);
+    expect(completed.conversations.some((conversation) => conversation.title === '项目示例 A')).toBe(true);
+    expect(completed.conversations.some((conversation) => conversation.title === '示例记录 A')).toBe(true);
     expect(completedActive.timeline.map((item) => item.kind)).toEqual([
       'user-message', 'reasoning', 'tool-call', 'tool-result', 'assistant-message',
     ]);
