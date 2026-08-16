@@ -14,3 +14,27 @@ export type {
   HealthClientOptions,
   HealthResponse,
 } from './health';
+
+export {
+  WORKSPACES_ENDPOINT_PATH,
+  WorkspaceClientError,
+  createWorkspace,
+  listWorkspaces,
+  openWorkspace,
+  renameWorkspace,
+  validateWorkspaceErrorEnvelope,
+  validateWorkspaceListResponse,
+  validateWorkspaceResponse,
+} from './workspaces';
+export type {
+  CreateWorkspaceCommand,
+  RenameWorkspaceCommand,
+  Workspace,
+  WorkspaceAvailability,
+  WorkspaceClientFailureCode,
+  WorkspaceClientOptions,
+  WorkspaceErrorCode,
+  WorkspaceErrorDetail,
+  WorkspaceErrorEnvelope,
+  WorkspaceListResponse,
+} from './workspaces';
