@@ -303,3 +303,167 @@
   6. 确认 P02 Exit Gate 全部通过后停止，不生成或实现 P03 TASK，不修改 Frontend。
 - **wave:** `4`
 - **status:** `pending`
+
+---
+
+# M02-P03 — Frontend Connection & Feature Acceptance TASK
+
+## 执行边界
+
+- 仅在 `M02-P02` Exit Gate 通过后执行；复用真实 `/api/health`、SQLite/Migration Lifespan 和 M01 Fixture Harness（夹具测试框架），不重写 P01/P02 后端边界。
+- 仅实现 `M02-P03`：Frontend API Base URL、Health DTO Validation（健康数据传输对象校验）与 Client、`checking | connected | disconnected` 连接生命周期、手动 Retry（重试）、Shell 状态展示、M01 边界演进和 M02 累计验收。
+- Backend Connection（后端连接）只影响连接提示，不改变 Scenario、Timeline、Composer、UiIntent、Sidebar 本地状态或 Acceptance Panel；M02 不添加 Polling（轮询）、自动重试、离线队列或连接驱动的 Fixture 变化。
+- 只有 `frontend/src/api/` 可以直接调用 `fetch`；Health DTO 不进入 M01 Presentation/Fixture，React Component 不拼 URL、不解释 HTTP Response。
+- 自动测试使用可注入 Base URL、Fetch、Abort Signal（取消信号）和 Mock/Fake，保持离线、确定性，不依赖真实 Backend；真实前后端联动只进入最后一个 TASK 的人工验收。
+- 每个 TASK 完成后运行其必要测试；最后一个 TASK 执行 Backend pytest、Frontend Vitest、Frontend Build、联合启动 Smoke、Git 范围检查和唯一一次 M02 Feature Acceptance，完成后停止。
+
+---
+
+## M02-P03-T01 — 建立 Frontend Health API Boundary
+
+- **task_id:** `M02-P03-T01`
+- **goal:** 固定 `VITE_API_BASE_URL`、Health DTO Runtime Validation（运行时校验）和唯一可注入的 HTTP Client 边界。
+- **depends_on:** `[M02-P02-T05]`
+- **write_scope:**
+  - `frontend/src/api/config.ts`
+  - `frontend/src/api/health.ts`
+  - `frontend/src/api/index.ts`
+  - `frontend/src/api/health.test.ts`
+- **expected_output:**
+  - Frontend 只读取 `VITE_API_BASE_URL`，默认值为 `http://127.0.0.1:8000`；配置去除尾斜杠，只接受无 Path、Query、Fragment 的合法 HTTP(S) Origin。
+  - Client 在内部追加固定 `/api/health`，Production Source（生产源码）中的组件和其他模块不散落 Backend URL、不直接调用 `fetch`。
+  - Health DTO 独立于 M01 Presentation Model，运行时严格校验 `ok/degraded`、`ready/unavailable`、固定 Service/API Version 和 `schema_version: number | null` 的 SPEC Shape。
+  - Client 可注入 Base URL、Fetch Implementation（Fetch 实现）和取消信号；单次请求具有有限 Timeout（超时），调用者可以取消请求。
+  - HTTP `200` 且 Payload 合法时返回已校验 DTO；`503`/其他非 `200`、非 JSON、错误 Shape、Network Error、Timeout 和 Abort 均作为可区分的 Client Failure 交给连接层处理，不把原始 HTML、堆栈或敏感路径交给 UI。
+  - 测试覆盖默认/合法覆盖、尾斜杠、非法协议/Path/Query/Fragment、准确 URL、成功、`503`、非 JSON、错误 Shape、Network Error、Timeout、外部 Abort，且不发出真实网络请求。
+- **verification:**
+  ```powershell
+  cd frontend
+  npm run test -- --run src/api/health.test.ts
+  npm run build
+  ```
+- **wave:** `1`
+- **status:** `pending`
+
+---
+
+## M02-P03-T02 — 实现 Connection Lifecycle 与并发保护
+
+- **task_id:** `M02-P03-T02`
+- **goal:** 实现独立于 M01 Harness State（测试框架状态）的三态 Backend Connection 生命周期和显式 Retry 行为。
+- **depends_on:** `[M02-P03-T01]`
+- **write_scope:**
+  - `frontend/src/app/backendConnection.ts`
+  - `frontend/src/app/backendConnection.test.ts`
+- **expected_output:**
+  - 连接状态只包含 `checking | connected | disconnected`；首次 Probe（探测）开始和每次用户 Retry 时进入 `checking`。
+  - 仅当 Client 收到 HTTP `200`、Payload 符合 Health Contract 且 Database 为 `ready` 时进入 `connected`；Network/Timeout/非 `200`/非法 Payload/Database 非 Ready 均进入 `disconnected`。
+  - M02 不包含后台 Polling 或自动 Retry；失败后只有显式 Retry 才发起下一次 Probe。
+  - 下一次 Retry 会取消上一请求；较旧请求即使较晚完成也不能覆盖较新的状态。组件/组合层卸载时取消未完成请求，之后不再提交状态。
+  - 可保留供开发测试使用的受限 Error Detail，但不得向 UI 暴露堆栈、绝对路径或原始 HTML Response。
+  - Connection Lifecycle 不读取或修改 Scenario、Timeline、Composer、UiIntent、Sidebar 或 Fixture；测试以 Fake Client/可控 Promise 覆盖初次 Checking、成功、全部失败映射、Retry、旧请求丢弃和 Dispose/Unmount Abort。
+- **verification:**
+  ```powershell
+  cd frontend
+  npm run test -- --run src/app/backendConnection.test.ts
+  ```
+- **wave:** `2`
+- **status:** `pending`
+
+---
+
+## M02-P03-T03 — 实现可访问的 Connection Indicator
+
+- **task_id:** `M02-P03-T03`
+- **goal:** 实现只消费连接状态与 Retry Callback 的纯展示组件，并覆盖 Sidebar 展开/折叠两态。
+- **depends_on:** `[M02-P03-T02]`
+- **write_scope:**
+  - `frontend/src/components/shell/BackendConnectionStatus.tsx`
+  - `frontend/src/components/shell/BackendConnectionStatus.module.css`
+  - `frontend/src/components/shell/BackendConnectionStatus.test.tsx`
+- **expected_output:**
+  - `checking` 显示可见文本“正在连接后端”，`connected` 显示“后端已连接”，`disconnected` 显示“后端未连接”和可操作的“重试”。
+  - Retry 只通过 Callback 上报用户意图，不直接调用 `fetch`、不拼 URL、不解释 Health DTO 或 HTTP Error。
+  - 三种状态均以文本/语义表达而非只依赖颜色；Retry 可通过键盘操作并具有明确 Accessible Name（可访问名称）。
+  - 组件适配 Sidebar Footer 的紧凑空间；Sidebar 折叠时仍通过可见文本替代、Accessible Name 或等价方式识别当前状态和 Retry，不破坏 Sidebar 主布局。
+  - UI 不显示堆栈、绝对路径、原始 HTML Response 或开发用 Error Detail。
+  - 测试覆盖三态文本、非纯颜色语义、Retry Callback、展开/折叠两态、键盘操作和主要 Accessible Name。
+- **verification:**
+  ```powershell
+  cd frontend
+  npm run test -- --run src/components/shell/BackendConnectionStatus.test.tsx
+  ```
+- **wave:** `3`
+- **status:** `pending`
+
+---
+
+## M02-P03-T04 — 接入 App、Sidebar 并演进 Source Boundary
+
+- **task_id:** `M02-P03-T04`
+- **goal:** 将 Connection Lifecycle 和 Indicator 接入现有 App Shell，同时保持 M01 Fixture/UiIntent/交互边界不变。
+- **depends_on:** `[M02-P03-T03]`
+- **write_scope:**
+  - `frontend/src/App.tsx`
+  - `frontend/src/app/AppShell.tsx`
+  - `frontend/src/components/shell/Sidebar.tsx`
+  - `frontend/src/components/shell/Sidebar.module.css`
+  - `frontend/src/app/AppConnection.test.tsx`
+  - `frontend/src/test/sourceBoundary.test.ts`
+- **expected_output:**
+  - App Mount（应用挂载）后只执行一次初始 Probe；状态经 AppShell 传入 Sidebar Footer，Disconnected 的 Retry 可在不刷新页面的情况下发起新 Probe。
+  - Sidebar 展开/折叠两态均能识别连接状态和 Retry；连接提示保持紧凑，不改变现有 Sidebar、Timeline、Composer 或 Acceptance Panel 的尺寸与操作基线。
+  - Backend 不可达、超时、非 `200` 或 Payload 不合法时，本地 M01 UI 仍可使用，当前 Scenario、Conversation、Timeline、Composer Draft/Mode 和最近 UiIntent 不被清空、锁死或改写。
+  - 集成使用 Mock Fetch 验证 Checking → Connected、Checking → Disconnected、Backend 恢复后的 Retry → Connected、旧请求不覆盖新结果和 Unmount Abort，不依赖真实 Backend/网络。
+  - Source Boundary Test 将 M01“禁止所有 HTTP Client”的历史断言演进为 `fetch` 仅允许在 `frontend/src/api/`；Presentation、Fixture 与纯展示组件保持无 Backend Import。
+  - M01 对 Router、浏览器持久化、全局状态库、计时器驱动 Agent、不安全 HTML 和异步 Mock Agent 的既有保护继续生效；不为 Connection 引入 Polling、自动 Retry 或全局状态库。
+- **verification:**
+  ```powershell
+  cd frontend
+  npm run test -- --run src/app/AppConnection.test.tsx src/test/sourceBoundary.test.ts
+  npm run build
+  ```
+- **wave:** `4`
+- **status:** `pending`
+
+---
+
+## M02-P03-T05 — 完成累计 Regression 与 M02 Feature Acceptance
+
+- **task_id:** `M02-P03-T05`
+- **goal:** 补齐前后端累计回归证据，执行完整自动测试、联合启动 Smoke、Git/Architecture 范围检查和唯一一次 M02 Feature Acceptance。
+- **depends_on:** `[M02-P03-T04]`
+- **write_scope:**
+  - `frontend/src/test/m02Regression.test.tsx`
+  - `frontend/src/test/m01Regression.test.tsx`（仅补充 Backend Connection 不改变 M01 行为的回归断言）
+  - `M02-P03-T01` 至 `M02-P03-T04` 的 `write_scope`（仅修复 P03 Gate 发现的问题）
+- **expected_output:**
+  - M02 Regression（回归测试）覆盖 Base URL/Health Client、三态 Connection、初次 Probe、Retry、并发/过期请求保护、Sidebar 两态、Source Boundary 和无 Runtime 信息泄露；关键测试无 skip/todo。
+  - M01 全量 Regression 继续覆盖六个 Scenario、四类 UiIntent、Conversation/Sidebar/Reasoning/Composer/Acceptance Panel 行为；Connection 成功或失败均不改变 Fixture/Presentation 语义、布局与键盘操作。
+  - Backend pytest、Frontend Vitest 和 Frontend Production Build（生产构建）的最新完整运行均返回退出码 `0`；P03 不承接或掩盖 P01/P02 的测试债务。
+  - 全新临时 Data Directory 首次启动后只有 Version `1`，同一目录重复启动保持 Schema/记录不变；Health、CORS、Settings、Transaction 和 Migration Contract 继续符合 SPEC。
+  - `M02-R01` 至 `M02-R11` 均有自动或人工证据；Architecture Inspection（架构检查）确认没有 M03+ Entity、Repository/API、未来表、Agent、SSE 或 Runtime 能力。
+  - Git 范围检查确认全部新增源码/测试已跟踪，Database/WAL/SHM、`.data`、`.env`、Virtual Environment、Python/Node Cache、`dist/`、`node_modules/` 和日志未进入暂存区。
+- **verification:**
+  ```powershell
+  cd backend
+  python -m pytest
+
+  cd ..\frontend
+  npm run test -- --run
+  npm run build
+  ```
+
+  最终联合 Smoke 与 M02 Feature Acceptance：
+
+  1. 准备全新临时 Data Directory，在 `127.0.0.1:8000` 启动 Backend，再启动 Frontend。
+  2. 确认 UI 按 Checking → Connected 变化，调用 `/api/health` 得到 `200`、Database Ready 和 Schema Version `1`；M01 默认 Completed Scenario 和布局保持可用。
+  3. 停止 Backend 后触发 Retry，确认进入 Disconnected，且 Fixture、Composer 和 Acceptance Panel 仍可操作。
+  4. 使用同一 Data Directory 重启 Backend，再次 Retry，确认无需刷新页面即可恢复 Connected。
+  5. 检查 `schema_versions` 仍只有 Version `1`，Name/Checksum/`applied_at` 与 Schema 未被重复启动改写，且没有未来领域表。
+  6. 在 Sidebar 展开和折叠两态检查连接提示、Retry、键盘 Focus、文本/Accessible Name 和非纯颜色表达。
+  7. 抽查六个 Scenario、Conversation/Reasoning/Composer 和四类 UiIntent，确认 M01 无功能或语义回归。
+  8. 检查 `git status --short` 与暂存区，确认源码/测试已跟踪，Database、WAL/SHM、`.env`、Virtual Environment、Cache、`dist/` 和 `node_modules/` 未暂存。
+  9. P01、P02、P03 Exit Gate 和 `M02-R01` 至 `M02-R11` 全部无证据缺口后，记录 M02 Feature Acceptance；停止，不增加 P04，不实现 M03。
+- **wave:** `5`
+- **status:** `pending`
