@@ -338,3 +338,213 @@
   8. 确认全部自动与人工证据通过后记录 P02 Exit Gate；停止，不展开 `M03-P03`。
 - **wave:** `5`
 - **status:** `pending`
+
+---
+
+# M03-P03 — Frontend Workflow & Feature Acceptance TASK
+
+## 执行边界
+
+- 仅在 `M03-P02` Exit Gate 通过后执行；P02 的 REST API 是 Frontend（前端）唯一 Backend 事实源，不从 Domain、SQLite 或 OS 类型复制第二套 Contract。
+- 仅实现 `M03-P03`：Workspace DTO Runtime Validation（运行时校验）与 API Client、Collection/Operation Controller（集合/操作控制器）、添加/重命名/列表/状态 UI、Sidebar/App 集成、累计回归和 M03 Feature Acceptance（功能验收）。
+- 只有 `frontend/src/api/` 可以直接调用 `fetch`、拼接 Workspace URL 或解释 HTTP Status/Payload；App Workspace 层管理生命周期和竞态，Component 只接收类型化 View Model（视图模型）与 Callback，不导入 API Client。
+- 不使用 `localStorage`、`sessionStorage`、IndexedDB、Router 或全局状态库；不实现浏览器/系统目录选择器、文件上传、拖放、Workspace 删除/改路径、Git 探测、Conversation Ownership、真实消息发送、Run、Tool 或 M04+ 能力。
+- Workspace 选择不得改变 M01 六个 Fixture、Timeline 或四类 UiIntent（界面意图）；Composer 仍不发送真实消息，Workspace 失败不得禁用 Fixture 浏览或 M02 Backend Retry。
+- 每个 TASK 使用 Mock Fetch/Fake Client（模拟请求/伪客户端）保持自动测试离线、确定；最后一个 TASK 执行 Backend pytest、Frontend 全量 Vitest、Production Build（生产构建）、双端启动 Smoke、Git/Schema/Source 范围检查和最终人工验收，完成后停止。
+
+---
+
+## M03-P03-T01 — 实现 Workspace DTO Validation 与 API Client
+
+- **task_id:** `M03-P03-T01`
+- **goal:** 在统一 Frontend API Boundary 内实现 P02 四个 Endpoint 的严格 DTO 校验、HTTP 请求和类型化安全错误。
+- **depends_on:** `[M03-P02-T05]`
+- **write_scope:**
+  - `frontend/src/api/workspaces.ts`
+  - `frontend/src/api/workspaces.test.ts`
+  - `frontend/src/api/index.ts`
+- **expected_output:**
+  - 定义且运行时严格校验 Workspace/List/Error DTO：Workspace 只接受 `id/name/root_path/availability/created_at/updated_at/last_opened_at`，Availability 只接受 `available | missing | not_directory | inaccessible`，List 只接受 `{ items: [...] }`，拒绝缺字段、未知字段、非法枚举和非法固定毫秒 UTC 时间。
+  - Client 精确调用 `GET /api/workspaces`、`POST /api/workspaces`、`PATCH /api/workspaces/{workspace_id}` 和 `POST /api/workspaces/{workspace_id}/open`；Command 使用 JSON `Content-Type`，Create 只发送 `root_path/name?`，Rename 只发送 `name`，正确处理 Path Segment（路径段）编码。
+  - 成功响应必须符合 Endpoint Status 与 DTO Shape；`root_path_key`、裸 Array、分页字段或其他内部/未来字段均视为 Invalid Payload（非法响应），不得进入 App 状态。
+  - 类型化 `WorkspaceClientError` 区分 Domain HTTP Error、非 JSON/错误 Shape、Network Error 和 Abort；合法 Error Envelope 保留稳定 `code/message/field?/workspace_id?`，未知 HTML/内部异常转换为安全文案，不直接展示原始 Body、URL、堆栈或 Root Path。
+  - 所有请求接受外部 `AbortSignal`；已取消、请求中取消和网络失败行为确定，不把 Abort 当作可展示的 Operation Error（操作错误）。
+  - 测试覆盖四个 URL/Method/Body/Header、默认/自定义名称、成功 DTO、全部 Domain Error、非 JSON、错误 Shape/Status、Network、Abort、内部字段拒绝和安全错误文案；不连接真实 Backend。
+- **verification:**
+  ```powershell
+  cd frontend
+  npm run test -- --run src/api/workspaces.test.ts
+  npm run build
+  ```
+- **wave:** `1`
+- **status:** `pending`
+
+---
+
+## M03-P03-T02 — 实现 Workspace Lifecycle 与竞态安全状态
+
+- **task_id:** `M03-P03-T02`
+- **goal:** 建立可订阅、可释放的 Workspace Controller，统一管理 Collection、当前选择、操作状态、错误投影和请求新旧顺序。
+- **depends_on:** `[M03-P03-T01]`
+- **write_scope:**
+  - `frontend/src/app/workspaceController.ts`
+  - `frontend/src/app/workspaceController.test.ts`
+- **expected_output:**
+  - Runtime State（运行时状态）完整表达 `collection: idle | loading | ready | error`、`items`、`active_workspace_id: string | null`、`operation: idle | creating | renaming | opening | refreshing` 和安全 `operation_error`；初始选择固定为 `null`。
+  - Backend Connection 首次进入 `connected` 后执行一次 List；M03 不轮询。显式 Refresh 与 Backend Retry 恢复后通过 List 获取完整集合，List 成功本身不自动选择记录。
+  - 前端集合始终按 `last_opened_at DESC, created_at DESC, id ASC` 排序；Create/Open 成功只合并服务器返回项、设为当前项并重排，Rename 成功只合并返回项、保留当前选择并重排，三者均不额外 List。
+  - Pending/Success/Error 状态对 Create/Rename/Open/Refresh 准确；失败保留最近一次成功列表与当前选择，Duplicate 等 Domain Error 投影为安全可展示错误，不保留原始 HTML、堆栈或内部异常。
+  - 重叠请求只能由最新有效结果提交状态；快速重复操作受控，开始新请求时取消或使旧请求失效，Dispose/Unmount 后取消请求且不再发布状态。
+  - Controller 只依赖注入的 Workspace Client 与 Backend Connection 事件，不导入 React Component、Fixture/Presentation Type 或浏览器存储，不修改 M01 Harness State。
+  - 单元测试覆盖 Idle/Loading/Empty/Ready/Error、首次 Connected、显式 Refresh、Retry 恢复、Create/Rename/Open 合并与重排、失败保留、Duplicate、两个重叠请求、重复点击、Abort、Dispose 和初始不自动选择。
+- **verification:**
+  ```powershell
+  cd frontend
+  npm run test -- --run src/app/workspaceController.test.ts
+  ```
+- **wave:** `2`
+- **status:** `pending`
+
+---
+
+## M03-P03-T03 — 实现 Workspace 添加与重命名表单
+
+- **task_id:** `M03-P03-T03`
+- **goal:** 实现只通过 props/callback 工作的添加与重命名 UI，覆盖输入说明、Pending、防重复、Focus 和安全校验错误。
+- **depends_on:** `[M03-P03-T02]`
+- **write_scope:**
+  - `frontend/src/components/workspaces/AddWorkspaceForm.tsx`
+  - `frontend/src/components/workspaces/AddWorkspaceForm.module.css`
+  - `frontend/src/components/workspaces/AddWorkspaceForm.test.tsx`
+  - `frontend/src/components/workspaces/RenameWorkspaceDialog.tsx`
+  - `frontend/src/components/workspaces/RenameWorkspaceDialog.module.css`
+  - `frontend/src/components/workspaces/RenameWorkspaceDialog.test.tsx`
+- **expected_output:**
+  - Add Form（添加表单）包含明确 Label 的绝对路径必填输入、可选显示名称输入、支持格式示例和“输入或粘贴路径”说明；不显示不可工作的浏览文件夹、上传或拖放控件。
+  - Submit 仅上报 `root_path/name?`，Cancel 不上报创建；空路径具有可见且关联输入的校验错误，名称的最终领域校验仍以 Backend Error 为准，不在 Component 复制 Windows Path Resolver。
+  - Rename Dialog（重命名对话框）只编辑显示名称，打开时带当前名称初始值；确认只上报 `workspace_id/name`，取消不改变状态，不提供 Root Path 编辑能力。
+  - 两个表单都接收受控 Pending/Error，提交期间禁用相关确认按钮并防止重复触发；Domain Error 关联正确字段，Operation Error 有安全可见文本，不渲染 HTML 或内部异常。
+  - Dialog/Form 具备可访问名称、Label、初始 Focus、确认/取消键盘路径和关闭后的合理 Focus Return（焦点返回）；Focus、Disabled 和错误状态不只依赖颜色。
+  - 组件不导入 `src/api/` Client、不调用 `fetch`、不读 Backend Connection 或浏览器存储；测试覆盖 Label/Help、可选名称、Submit/Cancel、初始值、Pending、防重复、Focus、字段错误和主要 Accessible Name（可访问名称）。
+- **verification:**
+  ```powershell
+  cd frontend
+  npm run test -- --run src/components/workspaces/AddWorkspaceForm.test.tsx src/components/workspaces/RenameWorkspaceDialog.test.tsx
+  ```
+- **wave:** `3`
+- **status:** `pending`
+
+---
+
+## M03-P03-T04 — 实现 Workspace 列表与全部展示状态
+
+- **task_id:** `M03-P03-T04`
+- **goal:** 实现纯展示 Workspace Collection/List，使加载、空态、请求失败、四种 Availability、当前项和操作入口均可访问且可独立验证。
+- **depends_on:** `[M03-P03-T02]`
+- **write_scope:**
+  - `frontend/src/components/workspaces/WorkspaceCollection.tsx`
+  - `frontend/src/components/workspaces/WorkspaceCollection.module.css`
+  - `frontend/src/components/workspaces/WorkspaceCollection.test.tsx`
+  - `frontend/src/components/workspaces/WorkspaceList.tsx`
+  - `frontend/src/components/workspaces/WorkspaceList.module.css`
+  - `frontend/src/components/workspaces/WorkspaceList.test.tsx`
+- **expected_output:**
+  - Collection 明确展示 Loading、Empty、Collection Error 和 Operation Error；Empty 直接引导添加路径，Collection Error 提供 Retry，最近一次成功列表在操作失败时仍可见。
+  - 每条记录显示 Workspace 名称，并在展开态直接显示或通过 Tooltip/Accessible Description（工具提示/可访问描述）提供 `root_path`；长名称和长路径换行/截断安全，不造成 Sidebar 或页面级横向溢出。
+  - 当前 Workspace 使用 `aria-current` 或等价语义，不能只依赖颜色；Available、Missing、Not Directory、Inaccessible 均有具体文本/图标或等价的非纯颜色表达。
+  - Available 项提供 Open；Missing、Not Directory、Inaccessible 项提供“重新检查并打开”；每条记录提供 Rename 入口，Refresh、Add、Open、Recheck、Rename 都只通过 Callback 上报意图。
+  - Operation Pending 时相关按钮禁用并防重复触发，但不阻断 M01 Fixture 浏览或 Backend Retry；错误状态不显示原始 HTML、路径堆栈或内部异常。
+  - 组件不排序、不持有请求生命周期、不导入 API Client 或 Fixture/Presentation Type；测试覆盖四种 Availability、Current、Loading/Empty/Error、Retry/Refresh/Add/Open/Recheck/Rename Callback、Pending、长内容和 Accessible Name。
+- **verification:**
+  ```powershell
+  cd frontend
+  npm run test -- --run src/components/workspaces/WorkspaceCollection.test.tsx src/components/workspaces/WorkspaceList.test.tsx
+  ```
+- **wave:** `3`
+- **status:** `pending`
+
+---
+
+## M03-P03-T05 — 集成 App、Sidebar 与 Backend Connection Workflow
+
+- **task_id:** `M03-P03-T05`
+- **goal:** 将 Workspace Controller 和纯展示组件接入现有 App Shell，在 Sidebar 完成真实 Workspace Workflow，同时保持 M01 Fixture 与 M02 Connection 行为。
+- **depends_on:** `[M03-P03-T03, M03-P03-T04]`
+- **write_scope:**
+  - `frontend/src/App.tsx`
+  - `frontend/src/App.test.tsx`
+  - `frontend/src/app/AppShell.tsx`
+  - `frontend/src/app/AppShell.module.css`
+  - `frontend/src/app/AppShell.test.tsx`
+  - `frontend/src/app/AppConnection.test.tsx`
+  - `frontend/src/app/AppHarness.test.tsx`
+  - `frontend/src/app/AppWorkspace.test.tsx`
+  - `frontend/src/components/shell/Sidebar.tsx`
+  - `frontend/src/components/shell/Sidebar.module.css`
+  - `frontend/src/components/shell/Sidebar.test.tsx`
+  - `frontend/src/test/m01Regression.test.tsx`
+  - `frontend/src/test/m02Regression.test.tsx`
+  - `frontend/src/test/sourceBoundary.test.ts`
+- **expected_output:**
+  - Sidebar“项目”区域演进为真实 Workspace Collection，提供 Add、Refresh、Open/Recheck 和 Rename；既有 Conversation Fixture 继续作为独立演示内容，不宣称归属当前 Workspace。
+  - App 将 M02 Backend Connection 状态送入 Workspace Controller：首次 Connected 加载一次，Disconnected 不伪造数据，Retry 成功后重新 List；Workspace Request 失败不禁用 Backend Retry、Acceptance Panel、Fixture 切换、Timeline 或 Composer 演示。
+  - Create/Open/Rename/Refresh 通过 Controller 完成规定的本地合并、排序、选择和错误行为；页面刷新或 Frontend/App 重启后列表可重新加载但 Active Workspace 保持 `null`，用户必须显式 Open。
+  - Add/Rename UI 的打开、关闭、Focus Return、Pending 和错误接线完整；重复提交受控，过期请求或 Unmount 结果不能覆盖较新 App State。
+  - Sidebar 展开态可见名称、Root Path/描述和状态；折叠态仍能通过 Accessible Name 或 Tooltip 识别 Add 入口与当前 Workspace，Backend Connection Footer 保持可用。
+  - Workspace 选择不改变六个 Scenario、Active Conversation、Timeline、Run/Tool 状态、Composer Mode 或四类 UiIntent；Composer 仍不发送真实消息，不增加 Conversation/Run Backend 请求。
+  - Source Boundary Test 确认 `fetch`、Workspace URL 和 HTTP Payload 解释只在 `src/api/`，Component 不导入 Client，Fixture/Presentation 不依赖 Workspace DTO；生产源码无 Browser Storage、Router、全局状态库或 M04+ 能力。
+  - 集成测试覆盖 Connected/Disconnected/Retry、首次加载、Empty、Add、Duplicate、Rename、Refresh、Open、失效重检、初始不选中、Sidebar 两态、键盘/Focus、请求竞态和 M01/M02 共存不变量。
+- **verification:**
+  ```powershell
+  cd frontend
+  npm run test -- --run src/App.test.tsx src/app/AppShell.test.tsx src/app/AppConnection.test.tsx src/app/AppHarness.test.tsx src/app/AppWorkspace.test.tsx src/components/shell/Sidebar.test.tsx src/test/m01Regression.test.tsx src/test/m02Regression.test.tsx src/test/sourceBoundary.test.ts
+  npm run build
+  ```
+- **wave:** `4`
+- **status:** `pending`
+
+---
+
+## M03-P03-T06 — 完成累计 Regression 与 M03 Feature Acceptance
+
+- **task_id:** `M03-P03-T06`
+- **goal:** 汇总 P01–P03 自动与人工证据，完成 Backend/Frontend 全量回归、双端启动 Smoke、可访问性与视口检查、Git/Schema/Architecture Inspection 和 M03 最终验收。
+- **depends_on:** `[M03-P03-T05]`
+- **write_scope:**
+  - `frontend/src/test/m03Regression.test.tsx`
+  - `M03-P03-T01` 至 `M03-P03-T05` 的 `write_scope`（仅修复 P03 Gate 或 M03 Feature Acceptance 发现的问题）
+- **expected_output:**
+  - M03 Regression Test（回归测试）覆盖 Client、Controller、全部 Workspace 状态/操作、Sidebar 两态、竞态/Abort/Unmount、M01 Fixture/UiIntent 和 M02 Backend Connection；关键测试无 skip/todo。
+  - `M03-R01` 至 `M03-R11` 没有证据缺口；P01/P02 Backend Contract、空库与 Version `1 → 2` Upgrade（升级）、重复启动、唯一约束、CORS、隐私和四 Endpoint 闭环继续通过。
+  - Backend 全量 pytest、Frontend 全量 Vitest 和 Frontend Production Build 的最新运行均返回退出码 `0`；Backend/Frontend 可启动、连接、完成真实 Workspace Workflow 并正常停止。
+  - 用户可添加、列表、重命名、刷新和显式重新打开真实 Local Workspace；Duplicate Alias、Missing、Not Directory、Inaccessible 均有准确、安全、可恢复的 UI，失败不伪造成功或清空最近列表。
+  - 页面/双端重启后 Workspace 元数据仍存在，但不持久化或自动恢复 Active Workspace；M01 六个 Fixture、四类 UiIntent、主要布局/键盘行为和 M02 Disconnected/Retry 无语义回归。
+  - 自动与人工检查覆盖 Sidebar 展开/折叠、宽/窄视口、长名称/路径、Focus、Accessible Name、状态非纯颜色表达和安全错误；无页面级横向溢出或主要操作不可达。
+  - Git/Schema/Source Inspection 确认运行时数据库、WAL/SHM、Cache、`dist/`、`node_modules/` 和临时目录未暂存；只有 Version `2`/`workspaces` 属于 M03，无 Browser Storage、Directory Browser、Path Update、Delete、File Tool、Conversation Ownership 或 M04+ 能力。
+- **verification:**
+  ```powershell
+  cd backend
+  python -m pytest
+
+  cd ..\frontend
+  npm run test -- --run
+  npm run build
+  npm run dev
+  ```
+
+  最终人工验收：
+
+  1. 准备全新临时 Data Directory，启动 Backend 与 Frontend，确认 Health Ready 且 Schema Version 为 `2`。
+  2. 在 Workspace Empty State 中输入当前仓库的绝对 Windows 路径，省略名称创建，确认名称默认取目录末段并成为当前项。
+  3. 使用同一路径的大小写、斜杠或 Dot Segment 变体再次添加，确认 UI 显示重复错误且没有第二条记录。
+  4. 将 Workspace 显示名称改为不同名称，确认列表更新而磁盘目录和 Root Path 未改变。
+  5. 刷新页面，确认列表仍在但不自动选择；点击 Open 后成为当前项。
+  6. 重启 Backend 和 Frontend，再次从列表打开，确认持久化和 `last_opened_at` 排序工作。
+  7. 创建并添加一个专用临时目录；关闭应用后移动该测试目录，再启动并刷新，确认显示 Missing 且重新打开失败，不对用户仓库执行此操作。
+  8. 恢复临时目录并使用“重新检查并打开”，确认状态恢复 Available。
+  9. 在 Sidebar 展开/折叠、仅键盘操作和窄/宽视口下检查 Add、当前项、四种状态、Rename Focus 和长路径溢出。
+  10. 抽查 M01 六个 Fixture、四类 UiIntent、Composer 演示和 M02 Backend Disconnected/Retry，确认累计功能无回归。
+  11. 检查 SQLite Schema、源码边界和 `git status --short`，确认只有 Version `2`/`workspaces` 属于 M03，运行时数据库、WAL/SHM、Cache、`dist/`、`node_modules/` 和临时目录未暂存。
+  12. 全部自动与人工证据通过后记录 M03 Feature Acceptance；停止，不生成或实现 M04。
+- **wave:** `5`
+- **status:** `pending`
