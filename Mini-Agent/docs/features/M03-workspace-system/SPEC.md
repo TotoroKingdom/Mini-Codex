@@ -118,7 +118,12 @@ available | missing | not_directory | inaccessible
 - `name` 去除首尾空白后长度必须为 `1..80` 个 Unicode Code Point（Unicode 码点）。
 - `name` 不允许 C0 Control Character（控制字符）或换行；不同 Workspace 可以同名。
 - 未提供 `name` 时，使用规范化目录路径的最后一段作为默认显示名称。
-- `updated_at >= created_at`，`last_opened_at >= created_at`；所有时间使用带 `Z` 的 UTC ISO 8601 字符串。
+- `updated_at >= created_at`，`last_opened_at >= created_at`；- `created_at`、`updated_at` 和 `last_opened_at` 使用 UTC 时间，并统一序列化为固定毫秒精度的 ISO 8601 字符串：
+  `YYYY-MM-DDTHH:mm:ss.SSSZ`
+  例如：
+  `2026-08-16T08:00:00.000Z`
+- Backend 生成和持久化的 Workspace 时间戳必须始终使用该格式，不得混用无小数秒、不同小数秒精度或时区偏移表示。
+- 因所有持久化时间均使用同一 UTC 固定宽度格式，SQLite 可以按照 TEXT 值执行时间排序。
 - 创建 Workspace 同时视为成功打开一次，因此初始 `last_opened_at` 等于创建时间。
 - Rename（重命名）只更新 `name` 和 `updated_at`；不得重命名或移动磁盘目录。
 - Open（打开）只在路径重新验证成功后更新 `last_opened_at` 和 `updated_at`。
@@ -271,9 +276,9 @@ Workspace Response：
   "name": "Mini Agent",
   "root_path": "C:\\work\\mini-agent",
   "availability": "available",
-  "created_at": "2026-08-16T08:00:00Z",
-  "updated_at": "2026-08-16T08:00:00Z",
-  "last_opened_at": "2026-08-16T08:00:00Z"
+  "created_at": "2026-08-16T08:00:00.000Z",
+  "updated_at": "2026-08-16T08:00:00.000Z",
+  "last_opened_at": "2026-08-16T08:00:00.000Z"
 }
 ```
 
@@ -286,9 +291,10 @@ Workspace 领域失败使用稳定信封：
 ```json
 {
   "error": {
-    "code": "workspace_path_missing",
-    "message": "The workspace directory does not exist.",
-    "field": "root_path"
+    "code": "workspace_already_exists",
+    "message": "The workspace has already been added.",
+    "field": "root_path",
+    "workspace_id": "0db31d98-e622-4ee9-a699-7ab6cfba48f3"
   }
 }
 ```
@@ -296,7 +302,7 @@ Workspace 领域失败使用稳定信封：
 | HTTP | Code | Condition |
 |---|---|---|
 | `404` | `workspace_not_found` | ID 不存在 |
-| `409` | `workspace_already_exists` | 规范化路径已保存；Error 可以携带已有 `workspace_id` |
+| `409` | `workspace_already_exists` | 规范化路径已保存；响应必须携带已有 `workspace_id` |
 | `422` | `workspace_name_invalid` | 名称为空、过长或包含控制字符 |
 | `422` | `workspace_path_invalid` | 路径语法无效、非绝对、卷根或属于不支持的命名空间 |
 | `422` | `workspace_path_missing` | 路径不存在 |
@@ -351,9 +357,11 @@ Behavior Rules（行为规则）：
 - Backend Connection 首次变为 `connected` 后加载 Workspace 列表一次。
 - M03 不轮询。用户可以显式刷新；Backend Retry 成功后重新加载。
 - 页面刷新或应用重启后不自动选择旧记录；用户从持久列表显式重新打开。
-- Create 成功后把新 Workspace 设为当前打开项，并按服务器返回顺序更新列表。
-- Open 成功后设置当前项并将其移动到按 `last_opened_at` 排序的正确位置。
-- Rename 成功后保留当前选择，只更新服务器返回的记录。
+- Frontend 本地集合必须使用与 Backend List 相同的稳定排序规则：`last_opened_at DESC, created_at DESC, id ASC`。
+- Create 成功后，将服务器返回的 Workspace 合并进当前集合，设为当前 Workspace，并重新按上述规则排序；不额外执行 List 请求。
+- Open 成功后，将服务器返回的 Workspace 合并进当前集合，设为当前 Workspace，并重新按上述规则排序；不额外执行 List 请求。
+- Rename 成功后，将服务器返回的 Workspace 合并进当前集合，保留当前选择，并重新按上述规则排序；不额外执行 List 请求。
+- 显式 Refresh、首次加载和 Backend Retry 恢复后的重新加载仍通过 List API 获取服务器完整集合。
 - 旧请求、重复点击或组件卸载后的结果不得覆盖较新的状态；提交期间相关按钮需防重复触发。
 - API Failure 不清空最近一次成功列表；Error 可重试且不显示原始 HTML、路径堆栈或内部异常。
 
