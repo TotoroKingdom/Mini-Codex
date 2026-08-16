@@ -8,17 +8,20 @@ import { Sidebar } from '../components/shell/Sidebar';
 import { scenarioList, scenarios } from '../fixtures';
 import type { ScenarioId, UiIntent, UiIntentHandler, UiScenario } from '../presentation';
 import type { ConversationFixture } from '../presentation/types';
+import type { BackendConnectionStatus } from './backendConnection';
 import styles from './AppShell.module.css';
 
 export type AppShellProps = {
   scenario?: UiScenario;
   activeConversation?: ConversationFixture | null;
+  backendConnectionStatus?: BackendConnectionStatus;
   sidebarCollapsed?: boolean;
   expandedReasoningIds?: readonly string[];
   composerResetKey?: number;
   isAcceptancePanelOpen?: boolean;
   lastIntent?: UiIntent | null;
   onIntent?: UiIntentHandler;
+  onBackendConnectionRetry?: () => void;
   onScenarioSelect?: (scenarioId: ScenarioId) => void;
   onConversationSelect?: (conversationId: string) => void;
   onReasoningToggle?: (reasoningId: string) => void;
@@ -29,12 +32,14 @@ export type AppShellProps = {
 export function AppShell({
   scenario = scenarios.completed,
   activeConversation = scenarios.completed.conversations[0],
+  backendConnectionStatus = 'checking',
   sidebarCollapsed = false,
   expandedReasoningIds = [],
   composerResetKey = 0,
   isAcceptancePanelOpen = false,
   lastIntent = null,
   onIntent,
+  onBackendConnectionRetry,
   onScenarioSelect,
   onConversationSelect,
   onReasoningToggle,
@@ -47,9 +52,11 @@ export function AppShell({
       <div className={styles.workspace}>
         <Sidebar
           activeConversationId={activeConversation?.id ?? null}
+          backendConnectionStatus={backendConnectionStatus}
           collapsed={sidebarCollapsed}
           conversations={scenario.conversations}
           onConversationSelect={onConversationSelect}
+          onBackendConnectionRetry={onBackendConnectionRetry}
         />
         <div className={styles.conversationPane}>
           <ConversationHeader

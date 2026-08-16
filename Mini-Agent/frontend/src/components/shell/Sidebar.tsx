@@ -17,13 +17,17 @@ import {
   Sparkles,
 } from 'lucide-react';
 import type { ConversationFixture } from '../../presentation/types';
+import { BackendConnectionStatus } from './BackendConnectionStatus';
+import type { BackendConnectionStatusValue } from './BackendConnectionStatus';
 import styles from './Sidebar.module.css';
 
 export type SidebarProps = {
   collapsed?: boolean;
   conversations?: readonly ConversationFixture[];
   activeConversationId?: string | null;
+  backendConnectionStatus?: BackendConnectionStatusValue;
   onConversationSelect?: (conversationId: string) => void;
+  onBackendConnectionRetry?: () => void;
 };
 
 const primaryActions = [
@@ -60,7 +64,9 @@ export function Sidebar({
   collapsed = false,
   conversations = fallbackConversations,
   activeConversationId = conversations[0]?.id ?? null,
+  backendConnectionStatus = 'checking',
   onConversationSelect,
+  onBackendConnectionRetry,
 }: SidebarProps) {
   return (
     <aside
@@ -141,11 +147,18 @@ export function Sidebar({
       )}
 
       <footer className={styles.footer}>
-        <button aria-label="打开用户菜单" className={styles.userButton} type="button">
-          <span aria-hidden="true" className={styles.avatar}>T</span>
-          {!collapsed && <span className={styles.userName}>用户</span>}
-        </button>
-        {!collapsed && <button aria-label="侧边栏设置" className={styles.iconButton} type="button"><Settings2 aria-hidden="true" /></button>}
+        <BackendConnectionStatus
+          collapsed={collapsed}
+          onRetry={onBackendConnectionRetry ?? (() => undefined)}
+          status={backendConnectionStatus}
+        />
+        <div className={styles.footerUserActions}>
+          <button aria-label="打开用户菜单" className={styles.userButton} type="button">
+            <span aria-hidden="true" className={styles.avatar}>T</span>
+            {!collapsed && <span className={styles.userName}>用户</span>}
+          </button>
+          {!collapsed && <button aria-label="侧边栏设置" className={styles.iconButton} type="button"><Settings2 aria-hidden="true" /></button>}
+        </div>
       </footer>
     </aside>
   );

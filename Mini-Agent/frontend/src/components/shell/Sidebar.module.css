@@ -59,8 +59,12 @@
 .current { background: var(--surface-selected); color: var(--text-primary); }
 
 .footer { display: flex; align-items: center; gap: var(--space-2); min-height: 56px; padding: var(--space-2) var(--space-3); border-top: 1px solid var(--border-subtle); }
+.footer > :first-child { flex: 1; min-width: 0; }
+.footerUserActions { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
 .userButton { display: flex; align-items: center; flex: 1; min-width: 0; gap: var(--space-2); padding: var(--space-1); border-radius: var(--radius-md); text-align: left; }
 .avatar { display: inline-grid; width: 27px; height: 27px; flex: 0 0 auto; place-items: center; border-radius: 50%; background: linear-gradient(135deg, #efb2a7, #7bb5e9); color: var(--text-inverse); font-size: var(--font-size-xs); font-weight: var(--font-weight-semibold); }
 .userName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--font-size-sm); }
-.collapsed .footer { justify-content: center; padding: var(--space-2); }
+.collapsed .footer { flex-direction: column; justify-content: center; padding: var(--space-2); }
+.collapsed .footer > :first-child { flex: 0 0 auto; }
+.collapsed .footerUserActions { justify-content: center; }
 .collapsed .userButton { justify-content: center; flex: 0 0 auto; width: 40px; }
