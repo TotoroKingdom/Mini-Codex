@@ -43,6 +43,8 @@
 
 .collectionScroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 var(--space-2) var(--space-5); scrollbar-color: var(--border-strong) transparent; }
 .collection { margin-bottom: var(--space-5); }
+.workspaceProject { display: grid; gap: var(--space-2); margin-bottom: var(--space-5); }
+.workspaceProject > h2 { margin: 0; padding: 0 var(--space-2); color: var(--text-tertiary); font-size: var(--font-size-xs); font-weight: var(--font-weight-semibold); }
 .collectionHeader { display: flex; align-items: center; min-height: 24px; margin: 0 0 var(--space-2); padding: 0 var(--space-2); }
 .collection h2 { margin: 0; color: var(--text-tertiary); font-size: var(--font-size-xs); font-weight: var(--font-weight-semibold); }
 .collectionActions { display: flex; gap: 2px; margin-left: auto; opacity: 0; transition: opacity var(--motion-fast) ease; }
@@ -68,3 +70,4 @@
 .collapsed .footer > :first-child { flex: 0 0 auto; }
 .collapsed .footerUserActions { justify-content: center; }
 .collapsed .userButton { justify-content: center; flex: 0 0 auto; width: 40px; }
+.collapsedWorkspaceStatus { position: absolute; left: 22px; bottom: 106px; display: inline-grid; width: 20px; height: 20px; place-items: center; border-radius: 50%; background: var(--state-accent-subtle); color: var(--state-accent); }

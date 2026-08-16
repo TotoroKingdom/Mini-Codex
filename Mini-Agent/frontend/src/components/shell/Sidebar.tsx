@@ -16,9 +16,13 @@ import {
   SquarePen,
   Sparkles,
 } from 'lucide-react';
+import type { RefObject } from 'react';
 import type { ConversationFixture } from '../../presentation/types';
 import { BackendConnectionStatus } from './BackendConnectionStatus';
 import type { BackendConnectionStatusValue } from './BackendConnectionStatus';
+import { WorkspaceCollection } from '../workspaces/WorkspaceCollection';
+import type { WorkspaceCollectionOperation, WorkspaceCollectionOperationError, WorkspaceCollectionStatus } from '../workspaces/WorkspaceCollection';
+import type { WorkspaceListItem } from '../workspaces/WorkspaceList';
 import styles from './Sidebar.module.css';
 
 export type SidebarProps = {
@@ -28,6 +32,19 @@ export type SidebarProps = {
   backendConnectionStatus?: BackendConnectionStatusValue;
   onConversationSelect?: (conversationId: string) => void;
   onBackendConnectionRetry?: () => void;
+  workspaceActiveId?: string | null;
+  workspaceCollectionError?: string | null;
+  workspaceCollectionStatus?: WorkspaceCollectionStatus;
+  workspaceFocusReturnRef?: RefObject<HTMLElement | null>;
+  workspaceItems?: readonly WorkspaceListItem[];
+  workspaceOperation?: WorkspaceCollectionOperation;
+  workspaceOperationError?: WorkspaceCollectionOperationError | null;
+  onWorkspaceAdd?: () => void;
+  onWorkspaceOpen?: (workspaceId: string) => void;
+  onWorkspaceRecheck?: (workspaceId: string) => void;
+  onWorkspaceRefresh?: () => void;
+  onWorkspaceRename?: (workspaceId: string) => void;
+  onWorkspaceRetry?: () => void;
 };
 
 const primaryActions = [
@@ -43,11 +60,6 @@ const collections = [
     label: '置顶',
     collection: 'pinned',
     icon: <Pin aria-hidden="true" />,
-  },
-  {
-    label: '项目',
-    collection: 'project',
-    icon: <Folder aria-hidden="true" />,
   },
   {
     label: '最近',
@@ -67,12 +79,29 @@ export function Sidebar({
   backendConnectionStatus = 'checking',
   onConversationSelect,
   onBackendConnectionRetry,
+  workspaceActiveId = null,
+  workspaceCollectionError = null,
+  workspaceCollectionStatus = 'idle',
+  workspaceFocusReturnRef,
+  workspaceItems = [],
+  workspaceOperation = 'idle',
+  workspaceOperationError = null,
+  onWorkspaceAdd,
+  onWorkspaceOpen,
+  onWorkspaceRecheck,
+  onWorkspaceRefresh,
+  onWorkspaceRename,
+  onWorkspaceRetry,
 }: SidebarProps) {
+  const activeWorkspace = workspaceItems.find((workspace) => workspace.id === workspaceActiveId) ?? null;
+  const projectConversations = conversations.filter((conversation) => (conversation.collection ?? 'pinned') === 'project');
   return (
     <aside
       aria-label="侧边栏"
       className={`${styles.sidebar} ${collapsed ? styles.collapsed : styles.expanded}`}
       data-collapsed={collapsed}
+      ref={workspaceFocusReturnRef}
+      tabIndex={-1}
     >
       <div className={styles.brandRow}>
         <button aria-label="Codex 工作区" className={styles.brandButton} type="button">
@@ -94,10 +123,55 @@ export function Sidebar({
             {!collapsed && <span>{label}</span>}
           </button>
         ))}
+        {collapsed && (
+          <button aria-label="添加工作区" className={styles.actionButton} onClick={onWorkspaceAdd} type="button">
+            <Folder aria-hidden="true" />
+          </button>
+        )}
       </nav>
 
       {!collapsed && (
         <div className={styles.collectionScroll} data-scroll-region="sidebar">
+          <section aria-labelledby="collection-项目" className={styles.workspaceProject}>
+            <h2 id="collection-项目">项目</h2>
+            <WorkspaceCollection
+              activeWorkspaceId={workspaceActiveId}
+              collectionError={workspaceCollectionError}
+              collectionStatus={workspaceCollectionStatus}
+              items={workspaceItems}
+              onAdd={onWorkspaceAdd ?? (() => undefined)}
+              onOpen={onWorkspaceOpen ?? (() => undefined)}
+              onRecheck={onWorkspaceRecheck ?? (() => undefined)}
+              onRefresh={onWorkspaceRefresh ?? (() => undefined)}
+              onRename={onWorkspaceRename ?? (() => undefined)}
+              onRetry={onWorkspaceRetry ?? (() => undefined)}
+              operation={workspaceOperation}
+              operationError={workspaceOperationError}
+            />
+          </section>
+          {projectConversations.length > 0 && (
+            <section aria-labelledby="collection-项目示例会话" className={styles.collection}>
+              <div className={styles.collectionHeader}><h2 id="collection-项目示例会话">项目示例会话</h2></div>
+              <ul>
+                {projectConversations.map((conversation) => {
+                  const isCurrent = conversation.id === activeConversationId;
+                  return (
+                    <li className={styles.conversationItem} key={conversation.id}>
+                      <button
+                        aria-current={isCurrent ? 'page' : undefined}
+                        className={`${styles.conversation} ${isCurrent ? styles.current : ''}`}
+                        onClick={() => onConversationSelect?.(conversation.id)}
+                        type="button"
+                      >
+                        <span className={styles.itemSpacer} aria-hidden="true" />
+                        <span>{conversation.title}</span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          )}
           {collections.map(({ label, collection, icon }) => {
             const collectionConversations = conversations.filter(
               (conversation) => (conversation.collection ?? 'pinned') === collection,
@@ -113,8 +187,8 @@ export function Sidebar({
                     <button aria-label={`${label}更多操作`} className={styles.collectionAction} type="button">
                       <MoreHorizontal aria-hidden="true" size={16} />
                     </button>
-                    <button aria-label={label === '项目' ? '新建项目' : '编辑最近分组'} className={styles.collectionAction} type="button">
-                      {label === '项目' ? <Plus aria-hidden="true" size={16} /> : <SquarePen aria-hidden="true" size={15} />}
+                    <button aria-label="编辑最近分组" className={styles.collectionAction} type="button">
+                      <SquarePen aria-hidden="true" size={15} />
                     </button>
                   </div>
                 )}
@@ -160,6 +234,11 @@ export function Sidebar({
           {!collapsed && <button aria-label="侧边栏设置" className={styles.iconButton} type="button"><Settings2 aria-hidden="true" /></button>}
         </div>
       </footer>
+      {collapsed && activeWorkspace && (
+        <span aria-label={`当前工作区：${activeWorkspace.name}`} className={styles.collapsedWorkspaceStatus} role="status" title={activeWorkspace.root_path}>
+          <Folder aria-hidden="true" size={16} />
+        </span>
+      )}
     </aside>
   );
 }

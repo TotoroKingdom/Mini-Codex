@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -34,6 +34,10 @@ function unavailableHealthResponse(): Response {
   return { status: 503 } as Response;
 }
 
+function emptyWorkspaceListResponse(): Response {
+  return { status: 200, json: () => Promise.resolve({ items: [] }) } as Response;
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
 });
@@ -43,22 +47,23 @@ describe('M02 regression', () => {
     const retryResponse = createDeferred<Response>();
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(unavailableHealthResponse())
-      .mockImplementationOnce(() => retryResponse.promise);
+      .mockImplementationOnce(() => retryResponse.promise)
+      .mockResolvedValueOnce(emptyWorkspaceListResponse());
     vi.stubGlobal('fetch', fetchMock);
     const user = userEvent.setup();
 
     render(<App />);
 
-    expect(screen.getByRole('status')).toHaveTextContent('正在连接后端');
+    expect(screen.getByText('正在连接后端')).toBeInTheDocument();
     expect(await screen.findByText('后端未连接')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '切换侧边栏' }));
     expect(screen.getByLabelText('后端连接状态：后端未连接')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '重试连接后端' }));
-    expect(screen.getByRole('status')).toHaveTextContent('连接中');
+    expect(screen.getByText('连接中')).toBeInTheDocument();
     retryResponse.resolve(readyHealthResponse());
     expect(await screen.findByText('已连接')).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
 
     expect(document.body).not.toHaveTextContent('C:\\secret');
     expect(document.body).not.toHaveTextContent('<html>');

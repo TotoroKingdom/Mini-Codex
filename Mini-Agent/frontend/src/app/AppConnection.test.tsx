@@ -34,6 +34,10 @@ function unavailableResponse(): Response {
   return { status: 503 } as Response;
 }
 
+function emptyWorkspaceListResponse(): Response {
+  return { status: 200, json: () => Promise.resolve({ items: [] }) } as Response;
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
 });
@@ -41,11 +45,13 @@ afterEach(() => {
 describe('App backend connection', () => {
   it('在初次 Probe 时显示 Checking，并在 Health 成功后显示 Connected', async () => {
     const response = createDeferred<Response>();
-    vi.stubGlobal('fetch', vi.fn(() => response.promise));
+    vi.stubGlobal('fetch', vi.fn((url: string) => (
+      url.endsWith('/api/health') ? response.promise : Promise.resolve(emptyWorkspaceListResponse())
+    )));
 
     render(<App />);
 
-    expect(screen.getByRole('status')).toHaveTextContent('正在连接后端');
+    expect(screen.getByText('正在连接后端')).toBeInTheDocument();
     response.resolve(readyResponse());
 
     expect(await screen.findByText('后端已连接')).toBeInTheDocument();
@@ -70,7 +76,8 @@ describe('App backend connection', () => {
     const retryResponse = createDeferred<Response>();
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(unavailableResponse())
-      .mockImplementationOnce(() => retryResponse.promise);
+      .mockImplementationOnce(() => retryResponse.promise)
+      .mockResolvedValueOnce(emptyWorkspaceListResponse());
     vi.stubGlobal('fetch', fetchMock);
     const user = userEvent.setup();
 
@@ -79,10 +86,10 @@ describe('App backend connection', () => {
     await screen.findByText('后端未连接');
     await user.click(screen.getByRole('button', { name: '重试连接后端' }));
 
-    expect(screen.getByRole('status')).toHaveTextContent('正在连接后端');
+    expect(screen.getByText('正在连接后端')).toBeInTheDocument();
     retryResponse.resolve(readyResponse());
     expect(await screen.findByText('后端已连接')).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it('不会让较旧请求覆盖最新 Retry 的连接结果', async () => {
@@ -96,7 +103,8 @@ describe('App backend connection', () => {
         firstSignal = options.signal as AbortSignal;
         return firstRetryResponse.promise;
       })
-      .mockImplementationOnce(() => secondRetryResponse.promise);
+      .mockImplementationOnce(() => secondRetryResponse.promise)
+      .mockResolvedValueOnce(emptyWorkspaceListResponse());
     vi.stubGlobal('fetch', fetchMock);
 
     render(<App />);

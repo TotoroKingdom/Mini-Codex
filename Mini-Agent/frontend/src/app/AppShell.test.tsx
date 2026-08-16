@@ -31,4 +31,30 @@ describe('AppShell', () => {
 
     expect(screen.getByRole('button', { name: '切换侧边栏' })).toHaveFocus();
   });
+
+  it('passes Workspace Collection state into the Sidebar without a component API dependency', () => {
+    render(
+      <AppShell
+        workspaceState={{
+          collection: 'ready',
+          collection_error: null,
+          items: [{
+            id: 'workspace-a',
+            name: 'Mini Agent',
+            root_path: 'C:\\AI\\Mini-Codex\\Mini-Agent',
+            availability: 'available',
+            created_at: '2026-08-16T00:00:00.000Z',
+            updated_at: '2026-08-16T00:00:00.000Z',
+            last_opened_at: '2026-08-16T00:00:00.000Z',
+          }],
+          active_workspace_id: 'workspace-a',
+          operation: 'idle',
+          operation_error: null,
+        }}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: '打开 Mini Agent' })).toBeInTheDocument();
+    expect(screen.getByText('Mini Agent').closest('li')).toHaveAttribute('aria-current', 'true');
+  });
 });

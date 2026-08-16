@@ -24,7 +24,7 @@ function isApiSource(filePath: string): boolean {
   return relative(sourceRoot, filePath).split(/[\\/]/)[0] === 'api';
 }
 
-describe('M01 source boundaries', () => {
+describe('M03 source boundaries', () => {
   const applicationSources = listSourceFiles(sourceRoot)
     .filter((filePath) => sourceFilePattern.test(filePath) && !testFilePattern.test(filePath));
 
@@ -75,5 +75,22 @@ describe('M01 source boundaries', () => {
     });
 
     expect(backendImports).toEqual([]);
+  });
+
+  it('keeps Workspace API DTOs and the controller out of Fixtures and presentation', () => {
+    const fixtureAndPresentationSources = applicationSources.filter((filePath) => (
+      filePath.includes(`${join('src', 'fixtures')}${'\\'}`)
+      || filePath.includes(`${join('src', 'fixtures')}/`)
+      || filePath.includes(`${join('src', 'presentation')}${'\\'}`)
+      || filePath.includes(`${join('src', 'presentation')}/`)
+    ));
+    const workspaceBoundaryImports = fixtureAndPresentationSources.flatMap((filePath) => {
+      const imports = readFileSync(filePath, 'utf8').match(/^import .*$/gm) ?? [];
+      return imports
+        .filter((line) => /from ['"][^'"]*(?:\/api(?:\/|['"])|workspaceController)[^'"]*['"]/.test(line))
+        .map((line) => `${relative(sourceRoot, filePath)}: ${line}`);
+    });
+
+    expect(workspaceBoundaryImports).toEqual([]);
   });
 });
