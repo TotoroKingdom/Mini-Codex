@@ -1,5 +1,6 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { afterEach, vi } from 'vitest';
 import App from '../App';
 import { scenarioList, scenarios } from '../fixtures';
 import { COMPOSER_MODES, TIMELINE_ITEM_KINDS } from '../presentation';
@@ -8,6 +9,14 @@ async function openPanel(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole('button', { name: '更多会话选项' }));
   return screen.getByRole('dialog', { name: '验收面板' });
 }
+
+function unavailableHealthResponse(): Response {
+  return { status: 503 } as Response;
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe('M01 regression', () => {
   it('covers all Shell regions and primary reference controls in the default completed view', () => {
@@ -78,6 +87,23 @@ describe('M01 regression', () => {
     await user.click(screen.getByRole('button', { name: '拒绝工具调用 example_tool' }));
     expect(screen.getByText('permission.deny')).toBeInTheDocument();
     expect(within(timeline).getAllByRole('listitem').map((item) => item.getAttribute('data-kind'))).toEqual(beforeIntentKinds);
+    expect(JSON.stringify(scenarios)).toBe(fixtureSnapshot);
+  });
+
+  it('keeps M01 interactions and Fixtures unchanged when Backend Connection is disconnected', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(unavailableHealthResponse())));
+    const user = userEvent.setup();
+    const fixtureSnapshot = JSON.stringify(scenarios);
+    render(<App />);
+
+    expect(await screen.findByText('后端未连接')).toBeInTheDocument();
+    const panel = await openPanel(user);
+    await user.type(screen.getByRole('textbox', { name: '输入消息' }), '连接失败时仍可提交');
+    await user.keyboard('{Enter}');
+    expect(screen.getByText('composer.submit')).toBeInTheDocument();
+
+    await user.selectOptions(within(panel).getByRole('combobox', { name: '选择场景' }), 'running');
+    expect(screen.getByRole('banner', { name: '会话标题栏' })).toHaveAttribute('data-run-status', 'running');
     expect(JSON.stringify(scenarios)).toBe(fixtureSnapshot);
   });
 });

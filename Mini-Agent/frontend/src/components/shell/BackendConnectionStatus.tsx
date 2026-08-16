@@ -34,7 +34,7 @@ export function BackendConnectionStatus({
         <span className={styles.expandedText}>{content.message}</span>
         <span className={styles.compactText}>{content.compactMessage}</span>
       </span>
-      {status === 'disconnected' && (
+      {status !== 'checking' && (
         <button aria-label="重试连接后端" className={styles.retryButton} onClick={onRetry} type="button">
           重试
         </button>

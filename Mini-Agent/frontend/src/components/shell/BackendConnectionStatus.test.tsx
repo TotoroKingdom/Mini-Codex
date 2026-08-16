@@ -18,13 +18,17 @@ describe('BackendConnectionStatus', () => {
     expect(indicator.parentElement).toHaveAccessibleName(`后端连接状态：${message}`);
   });
 
-  it('只在 disconnected 状态提供带明确名称的 Retry 操作', () => {
+  it('在非 checking 状态提供带明确名称的 Retry 操作', () => {
     const onRetry = vi.fn();
     const { rerender } = render(<BackendConnectionStatus onRetry={onRetry} status="disconnected" />);
 
     expect(screen.getByRole('button', { name: '重试连接后端' })).toHaveTextContent('重试');
 
     rerender(<BackendConnectionStatus onRetry={onRetry} status="connected" />);
+
+    expect(screen.getByRole('button', { name: '重试连接后端' })).toHaveTextContent('重试');
+
+    rerender(<BackendConnectionStatus onRetry={onRetry} status="checking" />);
 
     expect(screen.queryByRole('button', { name: '重试连接后端' })).not.toBeInTheDocument();
   });
