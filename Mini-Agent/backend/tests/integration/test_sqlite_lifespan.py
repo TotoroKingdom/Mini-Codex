@@ -44,6 +44,7 @@ def test_lifespan_creates_the_data_directory_runs_migrations_and_publishes_datab
         assert data_dir.is_dir()
         assert isinstance(app.state.database, Database)
         assert app.state.database_probe is app.state.database
+        assert hasattr(app.state, "workspace_service")
         assert app.state.database.database_path.exists()
         assert app.state.database.probe() == 2
 
@@ -102,6 +103,7 @@ def test_lifespan_orders_database_migration_probe_and_dependency_publication(
         assert events == ["database", "runner", "migrate", "probe"]
         assert isinstance(app.state.database, RecordingDatabase)
         assert app.state.database_probe is app.state.database
+        assert hasattr(app.state, "workspace_service")
 
 
 def test_unavailable_data_directory_fails_before_database_startup(
@@ -143,3 +145,4 @@ def test_migration_failure_rejects_startup_without_publishing_a_database(
 
     assert raised.value is expected_error
     assert not hasattr(app.state, "database")
+    assert not hasattr(app.state, "workspace_service")

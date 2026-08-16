@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from mini_agent.api.app import create_app
+from mini_agent.application.workspaces.service import WorkspaceService
 from mini_agent.config import Settings
 from mini_agent.infrastructure.sqlite.database import Database
 
@@ -34,11 +35,13 @@ def test_factory_uses_injected_settings_without_pre_lifespan_side_effects(
     assert not data_dir.exists()
     assert not hasattr(app.state, "settings")
     assert not hasattr(app.state, "database_probe")
+    assert not hasattr(app.state, "workspace_service")
 
     with TestClient(app):
         assert app.state.settings is settings
         assert isinstance(app.state.database, Database)
         assert app.state.database_probe is app.state.database
+        assert isinstance(app.state.workspace_service, WorkspaceService)
         assert data_dir.is_dir()
 
 
