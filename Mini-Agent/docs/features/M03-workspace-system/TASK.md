@@ -179,3 +179,162 @@
   7. 确认全部自动与人工证据通过后记录 P01 Exit Gate；停止，不展开 `M03-P02` 或 `M03-P03`。
 - **wave:** `5`
 - **status:** `pending`
+
+---
+
+# M03-P02 — Workspace API & Backend Acceptance TASK
+
+## 执行边界
+
+- 仅在 `M03-P01` Exit Gate 通过后执行；复用 P01 的 Workspace Entity、Domain Error（领域错误）、Application Service（应用服务）、Repository、Windows Path Resolver（Windows 路径解析器）和 Version `2` Contract，不重写 P01 业务内核。
+- 仅实现 `M03-P02`：严格 Workspace HTTP Schema、Domain Error Mapping（领域错误映射）、四个 REST Endpoint（端点）、App Factory/Lifespan（应用工厂/生命周期）依赖装配、CORS（跨域资源共享）演进、真实 API Integration（API 集成）和 Backend 累计验收。
+- P02 不实现 Frontend API Client、Controller、Sidebar、Workspace 表单或 UI 状态；这些内容全部留给 `M03-P03`。
+- 不实现 Workspace Delete（删除）、Root Path Update（根路径修改）、Directory Browser/Picker（目录浏览/选择器）、文件上传、文件操作、Git 探测、Conversation、Session、Run、Tool、Memory 或任何 M04+ Route/Schema。
+- Route 只解析 HTTP 输入、调用 Application Service 并映射结果；不直接执行 SQL 或文件系统检查。测试可替换 Service，不访问真实用户目录或默认 Data Directory（数据目录）。
+- 每个 TASK 使用临时 Data Directory、Fake/Stub Service（伪/桩服务）和隔离 Fixture，保持测试离线、确定且不污染仓库；最后一个 TASK 执行 Backend 全量测试、真实启动 Smoke（冒烟检查）、Git/Schema/Source 范围检查和 P02 Exit Gate，通过后停止，不展开 P03。
+
+---
+
+## M03-P02-T01 — 固定 Workspace HTTP Schema 与 Error Mapping
+
+- **task_id:** `M03-P02-T01`
+- **goal:** 将 P01 的领域结果固定为严格、可独立验证且不泄漏内部字段的 Workspace HTTP Request/Response 与 Error Envelope（错误信封）。
+- **depends_on:** `[M03-P01-T06]`
+- **write_scope:**
+  - `backend/src/mini_agent/api/schemas/workspaces.py`
+  - `backend/src/mini_agent/api/workspace_errors.py`
+  - `backend/tests/unit/test_workspace_http_contract.py`
+- **expected_output:**
+  - Create Request（创建请求）只允许必填 `root_path` 和可选 `name`；Rename Request（重命名请求）只允许必填 `name`；两者均拒绝未知字段，不加入 Delete、Path Update、分页、搜索或未来字段。
+  - Workspace Response（工作区响应）只包含 `id/name/root_path/availability/created_at/updated_at/last_opened_at`，Availability 固定为 `available | missing | not_directory | inaccessible`，三个时间字段保持 P01 的 UTC 固定毫秒格式；内部 `root_path_key` 永不进入公开 Schema。
+  - List Response 固定为 `{ "items": WorkspaceResponse[] }`，不返回裸 Array（数组），不添加分页元数据。
+  - Error Envelope 固定为 `{ "error": { "code", "message", "field?", "workspace_id?" } }`；Duplicate Error（重复错误）安全携带已有 `workspace_id`，仅在适用时提供字段信息。
+  - Domain Error 到 HTTP Status/Code 的映射严格为：Not Found `404`、Duplicate `409`、Name/Invalid/Missing/Not Directory `422`、Inaccessible `403`、Persistence Failure `500`；稳定文案不包含 SQL、数据库路径、Root Path、原始 `OSError` 或 Traceback（堆栈）。
+  - Pydantic 的 Malformed JSON/Shape Validation（畸形 JSON/结构校验）保持 FastAPI 标准 `422`，不伪装为 Workspace Domain Error；Response Schema 同样拒绝未知字段或内部对象泄漏。
+  - 参数化单元测试覆盖全部 Domain Error 映射、严格 Request/Response/List Shape、时间与 Availability 枚举、可选名称、未知字段、Duplicate Workspace ID 和敏感信息边界，不启动 FastAPI Lifespan 或真实数据库。
+- **verification:**
+  ```powershell
+  cd backend
+  python -m pytest tests/unit/test_workspace_http_contract.py
+  ```
+- **wave:** `1`
+- **status:** `pending`
+
+---
+
+## M03-P02-T02 — 实现四个 Workspace Route
+
+- **task_id:** `M03-P02-T02`
+- **goal:** 通过可替换的 Workspace Service Dependency（服务依赖）暴露 Create、List、Rename 和 Open 四个 REST Endpoint。
+- **depends_on:** `[M03-P02-T01]`
+- **write_scope:**
+  - `backend/src/mini_agent/api/routes/workspaces.py`
+  - `backend/tests/integration/test_workspace_routes.py`
+- **expected_output:**
+  - 精确实现 `GET /api/workspaces`、`POST /api/workspaces`、`PATCH /api/workspaces/{workspace_id}` 和 `POST /api/workspaces/{workspace_id}/open`；成功状态分别为 `200/201/200/200`，Workspace Command（工作区命令）使用 JSON `Content-Type`。
+  - Route 只完成严格 Schema 解析、Service 调用、领域结果序列化和 T01 Error Mapping；不导入 SQLite Adapter，不执行 SQL，不直接访问路径或生成第二套领域校验。
+  - Service Dependency 可由测试替换为 Fake/Stub；Route Contract Test（路由契约测试）不触发真实 Lifespan、默认 Data Directory 或用户文件系统。
+  - Create 覆盖默认/自定义名称与 `available` 响应；List 返回固定 Envelope 和输入结果顺序；Rename 不接受 `root_path`；Open 只按 Path 参数调用对应用例。
+  - Unknown Field、Malformed Body、错误 Content Type/Shape 保持安全 `422` 边界；未知 Workspace ID 使用 `workspace_not_found`，未知 `/api/*` 仍保持 FastAPI 标准 `404`。
+  - Duplicate、Invalid、Missing、Not Directory、Inaccessible、Not Found 和 Persistence Failure 均生成 T01 的稳定 Status/Envelope；响应不包含 `root_path_key`、SQL、数据库路径、原始 OS Error 或堆栈。
+  - Backend 日志只记录 Workspace Operation（工作区操作）、可用的 Workspace ID、结果和安全错误代码；默认不记录 Create 输入或完整 Root Path，测试捕获日志验证成功/失败边界。
+- **verification:**
+  ```powershell
+  cd backend
+  python -m pytest tests/integration/test_workspace_routes.py
+  ```
+- **wave:** `2`
+- **status:** `pending`
+
+---
+
+## M03-P02-T03 — 装配 Workspace Service 并演进 CORS
+
+- **task_id:** `M03-P02-T03`
+- **goal:** 在唯一 App Factory/Lifespan 中装配 P01 具体依赖、注册 Workspace Route，并只扩展 Workspace UI 必需的 CORS 能力。
+- **depends_on:** `[M03-P02-T02]`
+- **write_scope:**
+  - `backend/src/mini_agent/api/app.py`
+  - `backend/tests/integration/test_app_factory.py`
+  - `backend/tests/integration/test_sqlite_lifespan.py`
+  - `backend/tests/integration/test_cors.py`
+  - `backend/tests/integration/test_workspace_app_wiring.py`
+- **expected_output:**
+  - Lifespan 在既有 Version `2` Migration/Database Ready 顺序内装配具体 `SQLiteWorkspaceRepository`、`WindowsWorkspacePathResolver`、生产 UUID Generator 和 UTC Clock，并向 Workspace Route 发布同一个 Application Service；不建立第二套数据库连接或配置入口。
+  - App Factory 注册且只注册 P02 的四个 `/api/workspaces` Endpoint；M02 `/api/health`、未知 `/api/*` `404`、Startup 和 Migration Contract 保持不变。
+  - 测试可显式替换 Workspace Service，调用 Route 时不连接真实用户目录或默认 Data Directory；Factory 创建与 Package Import 本身不运行 Migration、不打开数据库或访问 Workspace Root。
+  - CORS Allow Methods 精确扩展为 `GET`、`POST`、`PATCH` 和 Preflight `OPTIONS`，Request Header 只额外允许 `Content-Type`；仍使用 Settings 的显式 Origin Allowlist、不启用 Credentials、不允许通配 Origin/Header/Method。
+  - Allowed Origin 的 GET/POST/PATCH Preflight 与 JSON Header 通过；Denied Origin、Method 或 Header 不获得允许跨域读取的响应头，且 CORS 演进不改变同源 HTTP Contract。
+  - Wiring Test（装配测试）证明具体 Repository/Resolver/ID/Clock 注入顺序、Fake Service Override、Lifespan 失败不发布半装配 Service，以及 Root/SQL/内部对象不泄漏到 `app.state` 之外的响应。
+- **verification:**
+  ```powershell
+  cd backend
+  python -m pytest tests/integration/test_app_factory.py tests/integration/test_sqlite_lifespan.py tests/integration/test_cors.py tests/integration/test_workspace_app_wiring.py
+  ```
+- **wave:** `3`
+- **status:** `pending`
+
+---
+
+## M03-P02-T04 — 完成真实 Workspace API Integration 与安全检查
+
+- **task_id:** `M03-P02-T04`
+- **goal:** 使用真实临时 Windows 目录、Version `2` SQLite 和完整 FastAPI Lifespan 验证四个 Endpoint 的持久闭环、失效隔离与隐私边界。
+- **depends_on:** `[M03-P02-T03]`
+- **write_scope:**
+  - `backend/tests/integration/test_workspace_api_integration.py`
+  - `backend/tests/integration/test_workspace_api_security.py`
+  - `M03-P02-T01` 至 `M03-P02-T03` 的 `write_scope`（仅修复真实 API Integration 发现的问题）
+- **expected_output:**
+  - 真实 Integration Test 使用临时 Data Directory 和专用临时 Workspace，完成 Create → List → Rename → Open；Create 返回 `201/available`，List Envelope/稳定排序正确，Rename 不改变磁盘目录或 Root，Open 成功更新时间。
+  - 默认名称和自定义名称均通过；同一路径的大小写、分隔符、Dot Segment（点路径段）或可隔离验证的 Alias 变体返回 `409 workspace_already_exists`、已有 `workspace_id`，且数据库只有一条记录。
+  - List Empty/Multiple、单项 Missing/Not Directory/Inaccessible 与 Item Isolation（单项隔离）通过；权限和异常场景使用 Fake OS Boundary 或隔离 Fixture，不依赖管理员权限或开发者机器配置。
+  - Rename Success/Invalid/Not Found、Root Immutable（根路径不可变）和 Timestamp 更新通过；Open Success/Not Found/失效路径通过，失败 Open 不改变 `last_opened_at/updated_at`，恢复目录后可再次成功 Open。
+  - Database Unique Constraint（数据库唯一约束）的最终重复保护可从 HTTP 层稳定映射为 `409`；非预期持久化失败稳定映射为安全 `500 workspace_persistence_failed`，Create 失败不留下部分记录。
+  - API Payload、Exception 和捕获日志均不泄漏 `root_path_key`、SQL、绝对数据库路径、Traceback 或原始 OS Error；Health 和无关错误响应不泄漏 Root Path，Workspace Root 只在明确 Workspace Response 中返回。
+  - 测试保持离线且只操作专用临时目录，不移动、重命名或探测用户仓库，不递归扫描 Workspace、不读取子文件、不检查写权限。
+- **verification:**
+  ```powershell
+  cd backend
+  python -m pytest tests/integration/test_workspace_api_integration.py tests/integration/test_workspace_api_security.py
+  ```
+- **wave:** `4`
+- **status:** `pending`
+
+---
+
+## M03-P02-T05 — 完成 Backend Regression、启动 Smoke 与 P02 Exit Gate
+
+- **task_id:** `M03-P02-T05`
+- **goal:** 汇总 P02 自动与人工证据，执行 Backend 全量回归、真实 API 启动 Smoke、Git/Schema/Source 范围检查和 P02 Exit Gate。
+- **depends_on:** `[M03-P02-T04]`
+- **write_scope:**
+  - `backend/tests/integration/test_m03_p02_regression.py`
+  - `M03-P02-T01` 至 `M03-P02-T04` 的 `write_scope`（仅修复 P02 Gate 发现的问题）
+- **expected_output:**
+  - P02 Regression Test（回归测试）覆盖四个 Endpoint、严格 Request/Response、全部 Domain Error Mapping、CORS、Lifespan Wiring、真实临时目录 + SQLite 闭环、日志/响应隐私和未知 Route；关键测试无 skip/todo。
+  - `M03-R06`、`M03-R07`、`M03-R11` 的 Backend 证据完整；P01 的 `M03-R01` 至 `M03-R05`、M02 Health/Startup/Migration/CORS Allowlist 继续通过。
+  - Backend 全量 pytest 返回退出码 `0`；服务可从空库和 Version `1` 数据库启动到 Ready/Schema Version `2`，`python -m mini_agent` 可完成 Create/List/Rename/Open Smoke 并正常停止。
+  - CORS 只增加 `GET/POST/PATCH/OPTIONS` 与 `Content-Type`，未放宽 Origin 或 Credentials；API/日志不泄漏内部比较键、SQL、数据库路径、原始 OS Error 或堆栈。
+  - Schema Inspection（模式检查）确认仍只有 Version `2`/`workspaces` 属于 M03；API/Schema/Source Inspection（源码检查）确认没有 Delete、Path Update、Directory Browser、File Tool、Frontend 或 M04+ Route/能力。
+  - Git 范围检查确认 P02 新增源码/测试已跟踪，Version `1` Migration 未修改，数据库、WAL/SHM、Cache、临时目录、Virtual Environment（虚拟环境）和测试产物未暂存。
+  - P02 Exit Gate 通过后停止，不生成或实现 `M03-P03` TASK，不修改 Frontend。
+- **verification:**
+  ```powershell
+  cd backend
+  python -m pytest
+  python -m mini_agent
+  ```
+
+  API Smoke、范围检查与 Exit Gate：
+
+  1. 使用全新临时 Data Directory 启动 Backend，确认 `/api/health` 为 HTTP `200`、M02 固定响应结构和 `schema_version: 2`。
+  2. 通过 API 添加当前仓库绝对路径，确认 `201` 和规范化 Root；使用大小写、分隔符或 Dot Segment 变体再次添加，确认 `409` 且无重复记录。
+  3. 执行 List、Rename、Open，确认稳定排序、Root 不变和时间更新；随后仅移动一个专用临时测试目录，确认 List 显示 `missing`、Open 返回安全错误且时间不变，恢复后 Open 成功。
+  4. 使用同一 Data Directory 重启服务，并另用 Version `1` 临时数据库启动，确认持久列表、Migration 幂等和 Ready/Version `2`；不得对用户仓库执行移动或改名。
+  5. 检查允许/拒绝 Origin 的 GET/POST/PATCH Preflight、`Content-Type` Header、响应和 Backend 日志，确认 CORS 精确且无内部比较键、SQL、数据库路径、原始 OS Error 或堆栈。
+  6. 检查 SQLite Schema、FastAPI Route 和源码边界，确认没有 Delete、Path Update、Directory Browser、文件操作、Frontend 或 M04+ 能力。
+  7. 在仓库根目录执行 `git status --short`、暂存区和 Version `1` Diff 检查，确认新增源码/测试已跟踪，运行时数据库/WAL/SHM/Cache/临时产物未暂存，改动只属于 P02。
+  8. 确认全部自动与人工证据通过后记录 P02 Exit Gate；停止，不展开 `M03-P03`。
+- **wave:** `5`
+- **status:** `pending`
