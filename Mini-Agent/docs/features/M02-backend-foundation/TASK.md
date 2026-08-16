@@ -147,3 +147,159 @@
   6. 确认 P01 Exit Gate 全部通过后停止，不生成或实现 P02/P03 TASK，不实现 SQLite Migration。
 - **wave:** `4`
 - **status:** `pending`
+
+---
+
+# M02-P02 — SQLite & Migration Lifecycle TASK
+
+## 执行边界
+
+- 仅在 `M02-P01` Exit Gate 通过后执行；复用既有 Settings、App Factory、Lifespan、Health Schema、CORS 和统一启动入口，不重写 P01 HTTP/Config 边界。
+- 仅实现 `M02-P02`：标准库 `sqlite3` Connection/Transaction Boundary（连接/事务边界）、Database Probe（数据库探测）、Migration Descriptor/Registry/Runner（迁移描述/注册表/执行器）、`001_schema_versions` Baseline（基线迁移）和 Lifespan 接入。
+- Production Registry（生产迁移注册表）只包含 Version `1`，Production Schema（生产模式）只包含 `schema_versions`；不创建 Workspace、Conversation、Session、Run 或其他未来领域表。
+- 不实现 Frontend Health Client、连接状态 UI、Retry 或 M01 回归演进，不展开 `M02-P03`。
+- 测试只使用临时 Data Directory/Database 和测试内 Migration Fixture（迁移夹具），保持离线、确定性，不污染默认 `backend/.data`。
+- 每个 TASK 完成后运行其必要测试；最后一个 TASK 执行 P02 全量测试、空目录与重复启动 Smoke（冒烟检查）、Git 范围检查和 Exit Gate，Gate 通过后停止。
+
+---
+
+## M02-P02-T01 — 实现 SQLite Connection、Transaction 与 Probe 边界
+
+- **task_id:** `M02-P02-T01`
+- **goal:** 建立统一、短生命周期且可测试的 SQLite 连接、读上下文、事务上下文和健康探测边界。
+- **depends_on:** `[M02-P01-T05]`
+- **write_scope:**
+  - `backend/src/mini_agent/infrastructure/sqlite/database.py`
+  - `backend/tests/unit/test_database.py`
+- **expected_output:**
+  - Database File（数据库文件）固定为 `<resolved-data-dir>/mini-agent.db`，不新增第二个路径配置，也不允许 API 选择任意数据库路径。
+  - 每个新 Connection 统一启用 `PRAGMA foreign_keys = ON`、有限 `busy_timeout`、`sqlite3.Row` Name-based Access（按名称访问）和明确事务控制；不依赖跨线程共享的全局 Connection。
+  - Read Context（读上下文）离开时关闭 Connection；Transaction Context 正常返回时 Commit，异常时 Rollback，始终关闭且保留原始异常。
+  - Probe 使用独立短连接执行轻量查询并读取当前最大 Schema Version；探测失败可由上层稳定映射为 Database Unavailable，不泄露 Database 绝对路径。
+  - 测试覆盖 PRAGMA、Row Access、Busy Timeout、实际 Journal Mode、Commit、Rollback、异常传播、Foreign Key Enforcement（外键约束）、Read/Transaction Close 和 Probe 的版本/失败路径。
+- **verification:**
+  ```powershell
+  cd backend
+  python -m pytest tests/unit/test_database.py
+  ```
+- **wave:** `1`
+- **status:** `pending`
+
+---
+
+## M02-P02-T02 — 定义 Migration Descriptor、Registry 与 Baseline
+
+- **task_id:** `M02-P02-T02`
+- **goal:** 固定 Migration 的描述、Checksum（校验和）、注册顺序和 M02 唯一 Production Baseline 契约。
+- **depends_on:** `[M02-P01-T05]`
+- **write_scope:**
+  - `backend/src/mini_agent/infrastructure/sqlite/migrations/model.py`
+  - `backend/src/mini_agent/infrastructure/sqlite/migrations/registry.py`
+  - `backend/src/mini_agent/infrastructure/sqlite/migrations/versions/v001_schema_versions.py`
+  - `backend/tests/unit/test_migration_model.py`
+- **expected_output:**
+  - Migration Descriptor 至少包含稳定的 `version`、`name`、规范化 Checksum Source（校验和来源）和 `upgrade(connection)`；Checksum 使用 SHA-256 且同一规范化内容结果稳定。
+  - Registry 是 Migration 运行顺序的单一事实源，能够在执行前拒绝非从 `1` 连续递增、Duplicate Version（重复版本）或 Duplicate Name（重复名称）。
+  - Production Registry 只注册 `001_schema_versions`，Version 为 `1`，不包含 Downgrade（降级）或自动回滚历史版本能力。
+  - Baseline Descriptor 可由 Runner 应用并记录为 Version `1`，不创建 `schema_versions` 之外的表，也不预建任何 M03+ Schema。
+  - 模块 Import 不打开数据库、不创建目录、不运行 Migration；Clock（时钟）与 Connection 等运行输入不在 Descriptor Import 阶段产生副作用。
+  - 测试覆盖 Descriptor 必需字段、Checksum 稳定性/内容变化、Registry 顺序/连续性/唯一性和 Production Registry 仅含 Version `1`。
+- **verification:**
+  ```powershell
+  cd backend
+  python -m pytest tests/unit/test_migration_model.py
+  ```
+- **wave:** `1`
+- **status:** `pending`
+
+---
+
+## M02-P02-T03 — 实现最小 Migration Runner
+
+* **task_id:** `M02-P02-T03`
+* **goal:** 实现当前 M02 所需的最小 Migration Runner，支持首次初始化、顺序执行、重复启动幂等、漂移检测和事务回滚；不设计通用 Migration Framework。
+* **depends_on:** `[M02-P02-T01, M02-P02-T02]`
+* **write_scope:**
+
+  * `backend/src/mini_agent/infrastructure/sqlite/migrations/runner.py`
+  * `backend/tests/integration/test_migration_runner.py`
+* **expected_output:**
+
+  * Runner 可在空数据库中初始化 `schema_versions`，并按 Registry 的 Version 顺序执行 Pending Migration。
+  * 已成功执行的 Migration 不重复执行；重复运行不得修改已有 Version、Name、Checksum 或 `applied_at`。
+  * 已记录 Migration 的 Version、Name 或 Checksum 与当前 Registry 不一致时立即失败，不自动修复或覆盖历史。
+  * 单个 Migration 的 Schema/Data 修改与对应 `schema_versions` 记录处于同一事务；执行失败时完整 Rollback 当前 Migration，并保留原始异常。
+  * `applied_at` 使用可测试的 UTC 时间来源。
+  * 当前 Production Registry 仅需正确支持 `001_schema_versions`；测试可使用少量 Test Migration Fixture 验证顺序和回滚。
+  * 只实现当前 SPEC 所需的最小 Runner，不新增 Migration Manager、Planner、Strategy、Repository 等未来抽象，不实现 Downgrade、自动修复、分布式锁或其他通用迁移能力。
+  * 模块 Import 不打开数据库、不创建目录、不自动执行 Migration。
+* **verification:**
+
+  ```powershell
+  cd backend
+  python -m pytest tests/integration/test_migration_runner.py
+  ```
+* **wave:** `2`
+* **status:** `pending`
+
+---
+
+## M02-P02-T04 — 将 SQLite/Migration 接入 Lifespan 与 Health
+
+- **task_id:** `M02-P02-T04`
+- **goal:** 按 SPEC 固定顺序把真实 Database Boundary、Migration Runner 和 Probe 接入 App Lifespan，使服务只在数据库初始化成功后 Ready。
+- **depends_on:** `[M02-P02-T03]`
+- **write_scope:**
+  - `backend/src/mini_agent/api/app.py`
+  - `backend/src/mini_agent/api/routes/health.py`
+  - `backend/tests/integration/test_sqlite_lifespan.py`
+  - `backend/tests/integration/test_health_api.py`
+- **expected_output:**
+  - Lifespan 严格执行 Resolve/Validate Settings → Create Data Directory → Construct SQLite Boundary → Run Pending Migrations → Verify Database Readiness → Publish Dependencies to `app.state` → Accept Requests。
+  - 全新临时 Data Directory 启动时创建父目录、`mini-agent.db` 和 `schema_versions`；Migration/Probe 完成前不发布 Ready，任一启动步骤失败时拒绝应用启动。
+  - 成功启动后的真实 Probe 使 `GET /api/health` 返回 HTTP `200`、Database `ready`、`schema_version: 1`；运行期间 Probe 失败返回稳定的 HTTP `503 degraded/unavailable` 和 `schema_version: null`。
+  - Health Route 仍只通过依赖访问 Probe，不包含 SQL；响应与日志不泄露 Data Directory/Database 绝对路径、堆栈、配置全集或秘密。
+  - 无法创建/写入 Data Directory、Migration Drift 或 Migration Failure 产生可理解的启动失败，且不通过伪造 Healthy Response 掩盖错误。
+  - 关闭阶段释放应用持有资源；短连接模型不引入跨线程全局 Connection。测试全部注入临时 Settings，不写入默认 `.data`。
+  - 集成测试覆盖启动顺序/Ready 发布、空目录初始化、成功 Health `200`、Runtime Probe Failure `503`、不可用 Data Directory、Migration Failure 拒绝启动和重复 Lifespan 启动幂等。
+- **verification:**
+  ```powershell
+  cd backend
+  python -m pytest tests/integration/test_sqlite_lifespan.py tests/integration/test_health_api.py
+  ```
+- **wave:** `3`
+- **status:** `pending`
+
+---
+
+## M02-P02-T05 — 完成 P02 Regression、启动 Smoke 与 Exit Gate
+
+- **task_id:** `M02-P02-T05`
+- **goal:** 补齐 P02 累计回归证据，并执行 Backend 全量测试、空目录/重复启动 Smoke、Schema/Git 范围检查和 P02 Exit Gate。
+- **depends_on:** `[M02-P02-T04]`
+- **write_scope:**
+  - `backend/tests/integration/test_p02_regression.py`
+  - `M02-P02-T01` 至 `M02-P02-T04` 的 `write_scope`（仅修复 P02 Gate 发现的问题）
+- **expected_output:**
+  - Regression Test（回归测试）证明全新临时 Data Directory 首次启动后只产生 `mini-agent.db`、最小 `schema_versions` 和唯一 Version `1` 记录，Health 由真实 Probe 返回 `200 ready`。
+  - 同一 Data Directory 第二次及后续启动不重复插入 Version，不改写 Name/Checksum/`applied_at`，不改变 Schema；数据库可在服务停止后正常重新打开。
+  - Schema Inspection（模式检查）确认 Production Schema 只有允许的 SQLite 内部对象和 `schema_versions`，没有 Workspace、Conversation、Session、Run 或其他未来领域表。
+  - Backend 全量 pytest 返回退出码 `0`，关键测试无 skip/todo；P01 的 Settings、HTTP、CORS、Import 和启动入口契约继续通过。
+  - `M02-R03`、`M02-R05`、`M02-R06` 具有完整自动证据，`M02-R04` Health Contract 已由真实 SQLite Probe 支撑；首次、重复、漂移和失败路径可区分且事务一致。
+  - Git 范围检查确认 P02 新增源码/测试已跟踪，Database/WAL/SHM、`.data`、`.env`、Virtual Environment、Cache、测试产物和日志未进入暂存区；没有 P03 Frontend 或 M03+ 实现。
+- **verification:**
+  ```powershell
+  cd backend
+  python -m pytest
+  ```
+
+  Windows Smoke 与 Exit Gate 检查：
+
+  1. 指向全新临时 Data Directory 启动 `python -m mini_agent`，确认创建 `mini-agent.db` 和 Version `1`，调用 `/api/health` 得到 `200`、`ready`、`schema_version: 1`。
+  2. 正常停止服务，使用同一 Data Directory 再次启动并请求 Health；确认响应一致，`schema_versions` 仍只有一条记录且 Name/Checksum/`applied_at` 未变化。
+  3. 使用只读/不可创建目录或受控测试 Migration Failure 演示启动失败，确认服务不监听且没有伪造 Healthy 状态。
+  4. 检查 Database Schema，确认只有 `schema_versions`，不存在 Workspace、Conversation、Session、Run 等未来表；确认数据库停止后可正常重新打开。
+  5. 在仓库根目录执行 `git status --short` 与暂存区检查，确认新增源码/测试已跟踪，运行时数据库、日志、依赖和缓存未暂存，改动仅属于 P01/P02 累计范围。
+  6. 确认 P02 Exit Gate 全部通过后停止，不生成或实现 P03 TASK，不修改 Frontend。
+- **wave:** `4`
+- **status:** `pending`
