@@ -135,7 +135,6 @@
   ```powershell
   cd backend
   python -m pytest
-  python -m mini_agent
   ```
 
   Windows Smoke 与 Exit Gate 检查：
