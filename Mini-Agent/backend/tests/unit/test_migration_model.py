@@ -19,6 +19,10 @@ from mini_agent.infrastructure.sqlite.migrations.registry import (
 from mini_agent.infrastructure.sqlite.migrations.versions.v001_schema_versions import (
     MIGRATION as V001_SCHEMA_VERSIONS,
 )
+from mini_agent.infrastructure.sqlite.migrations.versions.v002_workspaces import (
+    MIGRATION as V002_WORKSPACES,
+    WORKSPACES_DDL,
+)
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
@@ -101,11 +105,14 @@ def test_registry_rejects_empty_non_contiguous_and_duplicate_entries(
         validate_registry(migrations)
 
 
-def test_production_registry_contains_only_the_version_one_baseline() -> None:
-    assert MIGRATIONS == (V001_SCHEMA_VERSIONS,)
+def test_production_registry_contains_the_unchanged_baseline_and_workspace_migration() -> None:
+    assert MIGRATIONS == (V001_SCHEMA_VERSIONS, V002_WORKSPACES)
     assert V001_SCHEMA_VERSIONS.version == 1
     assert V001_SCHEMA_VERSIONS.name == "001_schema_versions"
+    assert V002_WORKSPACES.version == 2
+    assert V002_WORKSPACES.name == "002_workspaces"
     assert not hasattr(V001_SCHEMA_VERSIONS, "downgrade")
+    assert not hasattr(V002_WORKSPACES, "downgrade")
 
 
 def test_baseline_upgrade_creates_only_schema_versions(tmp_path: Path) -> None:
@@ -127,6 +134,43 @@ def test_baseline_upgrade_creates_only_schema_versions(tmp_path: Path) -> None:
         ("checksum", "TEXT", 1, 0),
         ("applied_at", "TEXT", 1, 0),
     ]
+
+
+def test_workspace_upgrade_creates_exactly_the_workspace_schema_and_unique_path_key(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "migration-test.db"
+    connection = sqlite3.connect(database_path)
+    try:
+        V002_WORKSPACES.upgrade(connection)
+        tables = connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
+        ).fetchall()
+        columns = connection.execute("PRAGMA table_info(workspaces)").fetchall()
+        indexes = connection.execute("PRAGMA index_list(workspaces)").fetchall()
+        unique_index_columns = {
+            tuple(
+                row[2]
+                for row in connection.execute(f"PRAGMA index_info({index[1]})").fetchall()
+            )
+            for index in indexes
+            if index[2] == 1
+        }
+    finally:
+        connection.close()
+
+    assert tables == [("workspaces",)]
+    assert [(column[1], column[2], column[3], column[5]) for column in columns] == [
+        ("id", "TEXT", 1, 1),
+        ("name", "TEXT", 1, 0),
+        ("root_path", "TEXT", 1, 0),
+        ("root_path_key", "TEXT", 1, 0),
+        ("created_at", "TEXT", 1, 0),
+        ("updated_at", "TEXT", 1, 0),
+        ("last_opened_at", "TEXT", 1, 0),
+    ]
+    assert ("root_path_key",) in unique_index_columns
+    assert "availability" not in WORKSPACES_DDL.lower()
 
 
 def test_migration_import_has_no_filesystem_side_effects(tmp_path: Path) -> None:
@@ -153,5 +197,5 @@ def test_migration_import_has_no_filesystem_side_effects(tmp_path: Path) -> None
     )
 
     assert result.returncode == 0, result.stderr
-    assert result.stdout.strip() == "1"
+    assert result.stdout.strip() == "2"
     assert list(tmp_path.iterdir()) == []

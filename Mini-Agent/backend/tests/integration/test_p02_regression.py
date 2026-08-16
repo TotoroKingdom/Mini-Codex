@@ -1,4 +1,4 @@
-"""M02 SQLite 启动生命周期的端到端回归测试。"""
+"""M03 P01 SQLite 启动生命周期的端到端回归测试。"""
 
 from __future__ import annotations
 
@@ -55,14 +55,15 @@ def test_empty_data_dir_startup_and_restart_preserve_the_minimal_production_sche
         "status": "ok",
         "service": "mini-agent-backend",
         "api_version": "v1",
-        "database": {"status": "ready", "schema_version": 1},
+        "database": {"status": "ready", "schema_version": 2},
     }
     assert {path.name for path in data_dir.iterdir()} == {DATABASE_FILENAME}
 
     first_tables, first_history = read_schema_and_history(database_path)
-    assert first_tables == ["schema_versions"]
-    assert len(first_history) == 1
+    assert first_tables == ["schema_versions", "workspaces"]
+    assert len(first_history) == 2
     assert first_history[0][0:2] == (1, "001_schema_versions")
+    assert first_history[1][0:2] == (2, "002_workspaces")
     assert isinstance(first_history[0][2], str) and len(first_history[0][2]) == 64
     assert isinstance(first_history[0][3], str) and first_history[0][3]
 

@@ -45,12 +45,15 @@ def test_lifespan_creates_the_data_directory_runs_migrations_and_publishes_datab
         assert isinstance(app.state.database, Database)
         assert app.state.database_probe is app.state.database
         assert app.state.database.database_path.exists()
-        assert app.state.database.probe() == 1
+        assert app.state.database.probe() == 2
 
-    assert read_history(data_dir / "mini-agent.db")[0][0:2] == (1, "001_schema_versions")
+    assert [row[0:2] for row in read_history(data_dir / "mini-agent.db")] == [
+        (1, "001_schema_versions"),
+        (2, "002_workspaces"),
+    ]
 
 
-def test_lifespan_restarts_without_reapplying_the_baseline(tmp_path: Path) -> None:
+def test_lifespan_restarts_without_reapplying_migrations(tmp_path: Path) -> None:
     data_dir = tmp_path / "data"
     app = create_app(make_settings(data_dir))
 
@@ -63,7 +66,7 @@ def test_lifespan_restarts_without_reapplying_the_baseline(tmp_path: Path) -> No
     second_history = read_history(data_dir / "mini-agent.db")
 
     assert second_history == first_history
-    assert len(second_history) == 1
+    assert len(second_history) == 2
 
 
 def test_lifespan_orders_database_migration_probe_and_dependency_publication(
@@ -81,7 +84,7 @@ def test_lifespan_orders_database_migration_probe_and_dependency_publication(
 
         def probe(self) -> int:
             events.append("probe")
-            return 1
+            return 2
 
     class RecordingRunner:
         def __init__(self, database: RecordingDatabase) -> None:

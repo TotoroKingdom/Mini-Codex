@@ -39,7 +39,7 @@ def test_health_returns_real_database_ready_contract_after_lifespan_startup(tmp_
         "status": "ok",
         "service": "mini-agent-backend",
         "api_version": "v1",
-        "database": {"status": "ready", "schema_version": 1},
+        "database": {"status": "ready", "schema_version": 2},
     }
 
 

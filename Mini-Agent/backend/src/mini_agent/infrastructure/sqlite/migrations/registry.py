@@ -8,6 +8,9 @@ from mini_agent.infrastructure.sqlite.migrations.model import Migration
 from mini_agent.infrastructure.sqlite.migrations.versions.v001_schema_versions import (
     MIGRATION as V001_SCHEMA_VERSIONS,
 )
+from mini_agent.infrastructure.sqlite.migrations.versions.v002_workspaces import (
+    MIGRATION as V002_WORKSPACES,
+)
 
 
 class MigrationRegistryError(ValueError):
@@ -37,4 +40,4 @@ def validate_registry(migrations: Iterable[Migration]) -> tuple[Migration, ...]:
     return registry
 
 
-MIGRATIONS = validate_registry((V001_SCHEMA_VERSIONS,))
+MIGRATIONS = validate_registry((V001_SCHEMA_VERSIONS, V002_WORKSPACES))

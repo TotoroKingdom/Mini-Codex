@@ -15,6 +15,12 @@ from mini_agent.infrastructure.sqlite.database import Database
 from mini_agent.infrastructure.sqlite.migrations.model import Migration
 from mini_agent.infrastructure.sqlite.migrations.registry import MIGRATIONS
 from mini_agent.infrastructure.sqlite.migrations.runner import MigrationHistoryError, MigrationRunner
+from mini_agent.infrastructure.sqlite.migrations.versions.v001_schema_versions import (
+    MIGRATION as V001_SCHEMA_VERSIONS,
+)
+from mini_agent.infrastructure.sqlite.migrations.versions.v002_workspaces import (
+    MIGRATION as V002_WORKSPACES,
+)
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
@@ -49,26 +55,22 @@ def read_history(database: Database) -> list[tuple[int, str, str, str]]:
     return [tuple(row) for row in rows]
 
 
-def test_runner_bootstraps_and_records_the_production_baseline(tmp_path: Path) -> None:
+def test_runner_bootstraps_and_records_the_production_migrations(tmp_path: Path) -> None:
     database = make_database(tmp_path)
 
     MigrationRunner(database, clock=fixed_clock).run()
 
     history = read_history(database)
     assert history == [
-        (
-            1,
-            "001_schema_versions",
-            MIGRATIONS[0].checksum,
-            "2026-08-16T01:02:03+00:00",
-        )
+        (1, "001_schema_versions", MIGRATIONS[0].checksum, "2026-08-16T01:02:03+00:00"),
+        (2, "002_workspaces", MIGRATIONS[1].checksum, "2026-08-16T01:02:03+00:00"),
     ]
     with database.read_connection() as connection:
         tables = connection.execute(
             "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
         ).fetchall()
 
-    assert [row["name"] for row in tables] == ["schema_versions"]
+    assert [row["name"] for row in tables] == ["schema_versions", "workspaces"]
 
 
 def test_runner_is_idempotent_and_does_not_rewrite_applied_history(tmp_path: Path) -> None:
@@ -80,6 +82,61 @@ def test_runner_is_idempotent_and_does_not_rewrite_applied_history(tmp_path: Pat
     MigrationRunner(database, clock=lambda: later_time).run()
 
     assert read_history(database) == before
+
+
+def test_runner_upgrades_an_existing_version_one_database_without_rewriting_history(
+    tmp_path: Path,
+) -> None:
+    database = make_database(tmp_path)
+    MigrationRunner(database, (V001_SCHEMA_VERSIONS,), clock=fixed_clock).run()
+    version_one_history = read_history(database)
+
+    MigrationRunner(database, clock=fixed_clock).run()
+
+    assert read_history(database)[0] == version_one_history[0]
+    assert [row[0:2] for row in read_history(database)] == [
+        (1, "001_schema_versions"),
+        (2, "002_workspaces"),
+    ]
+    with database.read_connection() as connection:
+        assert connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'workspaces'"
+        ).fetchone()["name"] == "workspaces"
+
+
+def test_workspace_migration_enforces_the_root_path_key_unique_constraint(tmp_path: Path) -> None:
+    database = make_database(tmp_path)
+    MigrationRunner(database, clock=fixed_clock).run()
+    workspace = (
+        "workspace-1",
+        "First",
+        r"C:\work\first",
+        r"c:\work\same",
+        "2026-08-16T08:00:00.000Z",
+        "2026-08-16T08:00:00.000Z",
+        "2026-08-16T08:00:00.000Z",
+    )
+
+    with database.transaction() as connection:
+        connection.execute(
+            """
+            INSERT INTO workspaces (
+                id, name, root_path, root_path_key, created_at, updated_at, last_opened_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            workspace,
+        )
+
+    with pytest.raises(sqlite3.IntegrityError):
+        with database.transaction() as connection:
+            connection.execute(
+                """
+                INSERT INTO workspaces (
+                    id, name, root_path, root_path_key, created_at, updated_at, last_opened_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                ("workspace-2", *workspace[1:]),
+            )
 
 
 def test_runner_applies_test_migrations_in_registry_order(tmp_path: Path) -> None:
@@ -144,8 +201,8 @@ def test_runner_rejects_unknown_or_gapped_applied_versions(tmp_path: Path) -> No
 
     with database.transaction() as connection:
         connection.execute(
-            "INSERT INTO schema_versions (version, name, checksum, applied_at) VALUES (2, ?, ?, ?)",
-            ("002_unknown", "unknown", FIXED_TIME.isoformat()),
+            "INSERT INTO schema_versions (version, name, checksum, applied_at) VALUES (3, ?, ?, ?)",
+            ("003_unknown", "unknown", FIXED_TIME.isoformat()),
         )
 
     with pytest.raises(MigrationHistoryError, match="unknown applied migration version"):
@@ -154,8 +211,8 @@ def test_runner_rejects_unknown_or_gapped_applied_versions(tmp_path: Path) -> No
     with database.transaction() as connection:
         connection.execute("DELETE FROM schema_versions")
         connection.execute(
-            "INSERT INTO schema_versions (version, name, checksum, applied_at) VALUES (2, ?, ?, ?)",
-            ("002_gapped", "gapped", FIXED_TIME.isoformat()),
+            "INSERT INTO schema_versions (version, name, checksum, applied_at) VALUES (4, ?, ?, ?)",
+            ("004_gapped", "gapped", FIXED_TIME.isoformat()),
         )
 
     with pytest.raises(MigrationHistoryError, match="contiguous prefix"):
@@ -191,6 +248,37 @@ def test_failed_migration_rolls_back_its_schema_and_history_but_keeps_prior_vers
             "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'rolled_back_work'"
         ).fetchall()
 
+    assert tables == []
+
+
+def test_failed_workspace_migration_rolls_back_its_table_and_version_two_history(
+    tmp_path: Path,
+) -> None:
+    database = make_database(tmp_path)
+
+    def fail_after_workspace_ddl(connection: sqlite3.Connection) -> None:
+        V002_WORKSPACES.upgrade(connection)
+        raise RuntimeError("controlled workspace migration failure")
+
+    failing_workspace_migration = Migration(
+        version=2,
+        name=V002_WORKSPACES.name,
+        checksum_source=V002_WORKSPACES.checksum_source,
+        upgrade=fail_after_workspace_ddl,
+    )
+
+    with pytest.raises(RuntimeError, match="controlled workspace migration failure"):
+        MigrationRunner(
+            database,
+            (V001_SCHEMA_VERSIONS, failing_workspace_migration),
+            clock=fixed_clock,
+        ).run()
+
+    assert [row[0:2] for row in read_history(database)] == [(1, "001_schema_versions")]
+    with database.read_connection() as connection:
+        tables = connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'workspaces'"
+        ).fetchall()
     assert tables == []
 
 
