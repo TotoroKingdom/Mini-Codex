@@ -8,11 +8,12 @@ from fastapi.testclient import TestClient
 
 from mini_agent.api.app import create_app
 from mini_agent.config import Settings
+from mini_agent.infrastructure.sqlite.database import DatabaseProbeError
 
 
-class ReadyProbe:
+class FailingProbe:
     def probe(self) -> int:
-        return 7
+        raise DatabaseProbeError("controlled probe failure")
 
 
 def make_app(tmp_path: Path):
@@ -25,9 +26,8 @@ def make_app(tmp_path: Path):
     return create_app(settings)
 
 
-def test_health_returns_ready_contract_when_lifespan_receives_a_probe(tmp_path: Path) -> None:
+def test_health_returns_real_database_ready_contract_after_lifespan_startup(tmp_path: Path) -> None:
     app = make_app(tmp_path)
-    app.state.database_probe = ReadyProbe()
 
     with TestClient(app) as client:
         response = client.get("/api/health")
@@ -39,18 +39,18 @@ def test_health_returns_ready_contract_when_lifespan_receives_a_probe(tmp_path: 
         "status": "ok",
         "service": "mini-agent-backend",
         "api_version": "v1",
-        "database": {"status": "ready", "schema_version": 7},
+        "database": {"status": "ready", "schema_version": 1},
     }
 
 
-def test_health_defaults_to_stable_degraded_contract_and_unknown_api_is_standard_404(
+def test_health_returns_stable_degraded_contract_when_the_runtime_probe_fails(
     tmp_path: Path,
 ) -> None:
     app = make_app(tmp_path)
 
     with TestClient(app) as client:
+        app.state.database_probe = FailingProbe()
         health_response = client.get("/api/health")
-        missing_response = client.get("/api/not-found")
 
     assert health_response.status_code == 503
     assert health_response.headers["content-type"].startswith("application/json")
@@ -62,5 +62,13 @@ def test_health_defaults_to_stable_degraded_contract_and_unknown_api_is_standard
         "database": {"status": "unavailable", "schema_version": None},
     }
     assert set(health_response.json()) == {"status", "service", "api_version", "database"}
+
+
+def test_unknown_api_route_remains_a_standard_404(tmp_path: Path) -> None:
+    app = make_app(tmp_path)
+
+    with TestClient(app) as client:
+        missing_response = client.get("/api/not-found")
+
     assert missing_response.status_code == 404
     assert missing_response.json() == {"detail": "Not Found"}

@@ -7,8 +7,8 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from mini_agent.api.app import create_app
-from mini_agent.api.routes.health import UnavailableDatabaseProbe
 from mini_agent.config import Settings
+from mini_agent.infrastructure.sqlite.database import Database
 
 
 def make_settings(data_dir: Path) -> Settings:
@@ -23,7 +23,7 @@ def make_settings(data_dir: Path) -> Settings:
     )
 
 
-def test_factory_uses_injected_settings_without_runtime_filesystem_side_effects(
+def test_factory_uses_injected_settings_without_pre_lifespan_side_effects(
     tmp_path: Path,
 ) -> None:
     data_dir = tmp_path / "data-not-created"
@@ -37,8 +37,9 @@ def test_factory_uses_injected_settings_without_runtime_filesystem_side_effects(
 
     with TestClient(app):
         assert app.state.settings is settings
-        assert isinstance(app.state.database_probe, UnavailableDatabaseProbe)
-        assert not data_dir.exists()
+        assert isinstance(app.state.database, Database)
+        assert app.state.database_probe is app.state.database
+        assert data_dir.is_dir()
 
 
 def test_factories_keep_their_injected_settings_isolated(tmp_path: Path) -> None:
