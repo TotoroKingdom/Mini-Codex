@@ -263,8 +263,8 @@
   - Lifespan 在既有 Version `2` Migration/Database Ready 顺序内装配具体 `SQLiteWorkspaceRepository`、`WindowsWorkspacePathResolver`、生产 UUID Generator 和 UTC Clock，并向 Workspace Route 发布同一个 Application Service；不建立第二套数据库连接或配置入口。
   - App Factory 注册且只注册 P02 的四个 `/api/workspaces` Endpoint；M02 `/api/health`、未知 `/api/*` `404`、Startup 和 Migration Contract 保持不变。
   - 测试可显式替换 Workspace Service，调用 Route 时不连接真实用户目录或默认 Data Directory；Factory 创建与 Package Import 本身不运行 Migration、不打开数据库或访问 Workspace Root。
-  - CORS Allow Methods 精确扩展为 `GET`、`POST`、`PATCH` 和 Preflight `OPTIONS`，Request Header 只额外允许 `Content-Type`；仍使用 Settings 的显式 Origin Allowlist、不启用 Credentials、不允许通配 Origin/Header/Method。
-  - Allowed Origin 的 GET/POST/PATCH Preflight 与 JSON Header 通过；Denied Origin、Method 或 Header 不获得允许跨域读取的响应头，且 CORS 演进不改变同源 HTTP Contract。
+  - CORS Allow Methods 精确允许 `GET`、`POST`、`PATCH`；Preflight `OPTIONS` 由既有 CORS Middleware 自动处理，不作为 Workspace 业务 Method 单独注册。Request Header 只额外允许 `Content-Type`；仍使用 Settings 的显式 Origin Allowlist、不启用 Credentials、不允许通配 Origin/Header/Method。
+  - Allowed Origin 针对 GET/POST/PATCH 的 Preflight 与 `Content-Type` Header 通过
   - Wiring Test（装配测试）证明具体 Repository/Resolver/ID/Clock 注入顺序、Fake Service Override、Lifespan 失败不发布半装配 Service，以及 Root/SQL/内部对象不泄漏到 `app.state` 之外的响应。
 - **verification:**
   ```powershell
@@ -290,7 +290,7 @@
   - 默认名称和自定义名称均通过；同一路径的大小写、分隔符、Dot Segment（点路径段）或可隔离验证的 Alias 变体返回 `409 workspace_already_exists`、已有 `workspace_id`，且数据库只有一条记录。
   - List Empty/Multiple、单项 Missing/Not Directory/Inaccessible 与 Item Isolation（单项隔离）通过；权限和异常场景使用 Fake OS Boundary 或隔离 Fixture，不依赖管理员权限或开发者机器配置。
   - Rename Success/Invalid/Not Found、Root Immutable（根路径不可变）和 Timestamp 更新通过；Open Success/Not Found/失效路径通过，失败 Open 不改变 `last_opened_at/updated_at`，恢复目录后可再次成功 Open。
-  - Database Unique Constraint（数据库唯一约束）的最终重复保护可从 HTTP 层稳定映射为 `409`；非预期持久化失败稳定映射为安全 `500 workspace_persistence_failed`，Create 失败不留下部分记录。
+  - P01 已验证 Database Unique Constraint（数据库唯一约束）是重复 Workspace 的最终保护；P02 使用确定性场景验证 Repository 返回的 `workspace_already_exists` 能从 HTTP 层稳定映射为 `409`，不要求通过并发 HTTP 请求制造数据库 Race（竞态）。非预期持久化失败稳定映射为安全 `500 workspace_persistence_failed`，Create 失败不留下部分记录。
   - API Payload、Exception 和捕获日志均不泄漏 `root_path_key`、SQL、绝对数据库路径、Traceback 或原始 OS Error；Health 和无关错误响应不泄漏 Root Path，Workspace Root 只在明确 Workspace Response 中返回。
   - 测试保持离线且只操作专用临时目录，不移动、重命名或探测用户仓库，不递归扫描 Workspace、不读取子文件、不检查写权限。
 - **verification:**
@@ -329,7 +329,7 @@
   API Smoke、范围检查与 Exit Gate：
 
   1. 使用全新临时 Data Directory 启动 Backend，确认 `/api/health` 为 HTTP `200`、M02 固定响应结构和 `schema_version: 2`。
-  2. 通过 API 添加当前仓库绝对路径，确认 `201` 和规范化 Root；使用大小写、分隔符或 Dot Segment 变体再次添加，确认 `409` 且无重复记录。
+  2. 创建一个专用临时 Workspace 目录，通过 API 添加其绝对路径，确认 `201` 和规范化 Root；使用大小写、分隔符或 Dot Segment 变体再次添加，确认 `409` 且无重复记录。
   3. 执行 List、Rename、Open，确认稳定排序、Root 不变和时间更新；随后仅移动一个专用临时测试目录，确认 List 显示 `missing`、Open 返回安全错误且时间不变，恢复后 Open 成功。
   4. 使用同一 Data Directory 重启服务，并另用 Version `1` 临时数据库启动，确认持久列表、Migration 幂等和 Ready/Version `2`；不得对用户仓库执行移动或改名。
   5. 检查允许/拒绝 Origin 的 GET/POST/PATCH Preflight、`Content-Type` Header、响应和 Backend 日志，确认 CORS 精确且无内部比较键、SQL、数据库路径、原始 OS Error 或堆栈。
